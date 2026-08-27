@@ -1254,7 +1254,8 @@ className="toggle accent-rose-500 cursor-pointer h-5 w-5 disabled:cursor-not-all
   // CORREGIDO: Usamos el origen actual de la ventana de forma dinámica para evitar errores de dominio
   const tiendaIdReal = userId || 'id-no-encontrado';
   const currentOrigin = typeof window !== 'undefined' ? window.location.origin : 'https://vortexaiofficial.vercel.app/';
-  const codigoWidget = `<script src="${currentOrigin}/widget.js?store=${tiendaIdReal}" async></script>`;
+ // Añadimos el atributo data-tienda-id que el widget.js está buscando por dentro
+  const codigoWidget = `<script src="${currentOrigin}/widget.js" data-tienda-id="${tiendaIdReal}" async></script>`;
 
   const copiarAlPortapapeles = () => {
     navigator.clipboard.writeText(codigoWidget);
