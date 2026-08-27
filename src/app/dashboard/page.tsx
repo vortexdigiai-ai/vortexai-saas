@@ -743,8 +743,10 @@ const PLAN_HIERARCHY: Record<string, number> = {
 'pro': 3,
 'custom': 4,
 };
-// Usamos tu estado real del plan del cliente
-const currentPlanLevel = PLAN_HIERARCHY[planCliente.toLowerCase()] || 1;
+// Nos aseguramos de pasar a minúsculas y quitar espacios para evitar errores con 'PRO' o 'Pro'
+const planLimpio = (planCliente || 'starter').trim().toLowerCase();
+const currentPlanLevel = PLAN_HIERARCHY[planLimpio] || 1;
+
 // Lista de características enlazadas directamente a tus estados de React
 const featuresList = [
 {
