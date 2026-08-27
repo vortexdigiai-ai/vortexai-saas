@@ -202,37 +202,37 @@ supabase.removeChannel(channel);
 
 // Guardar configuración completa en la tabla 'tiendas'
 const guardarConfiguracion = async () => {
-setGuardandoConfig(true)
-try {
-const res = await fetch('/api/guardar-config', {
-method: 'POST',
-headers: { 'Content-Type': 'application/json' },
-body: JSON.stringify({
-user_id: userId,
-tiempos_envio: tiemposEnvio,
-politicas,
-faqs,
-exit_intent: exitIntent,
-recomendador,
-modo_persuasivo: modoPersuasivo,
-detector_idioma: detectorIdioma,
-carrito_abandonado: carritoAbandonado,
-analisis_sentimiento: analisisSentimiento,
-cupones_flash: cuponesFlash,
-plan: planCliente,
-color_primario: colorPrimario,
-mensaje_bienvenida: mensajeBienvenida,
-avatar_url: avatarEstilo,
-})
-})
-const data = await res.json()
-if (!res.ok) throw new Error(data.error || 'Error al guardar')
-alert('¡Configuración guardada correctamente en Supabase!')
-} catch (err: any) {
-alert('Hubo un error: ' + err.message)
-} finally {
-setGuardandoConfig(false)
-}
+  setGuardandoConfig(true)
+  try {
+    const res = await fetch('/api/guardar-config', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        user_id: userId,
+        tiempos_envio: tiemposEnvio,
+        politicas,
+        faqs,
+        exit_intent: exitIntent,
+        cross_selling: recomendador, // <--- Cambiado para que coincida con la base de datos
+        modo_persuasivo: modoPersuasivo,
+        detector_idioma: detectorIdioma,
+        carrito_abandonado: carritoAbandonado,
+        analisis_sentimiento: analisisSentimiento,
+        cupones_flash: cuponesFlash,
+        plan: planCliente,
+        color_primario: colorPrimario,
+        mensaje_bienvenida: mensajeBienvenida,
+        avatar_url: avatarEstilo,
+      })
+    })
+    const data = await res.json()
+    if (!res.ok) throw new Error(data.error || 'Error al guardar')
+    alert('¡Configuración guardada correctamente en Supabase!')
+  } catch (err: any) {
+    alert('Hubo un error: ' + err.message)
+  } finally {
+    setGuardandoConfig(false)
+  }
 }
 
 // Estados y lógica de Analíticas
@@ -766,7 +766,7 @@ checked: exitIntent,
 onChange: setExitIntent
 },
 {
-id: 'recomendador',
+id: 'cross_selling',
 title: '🛍️ Recomendador Cruzado (Cross-selling)',
 desc: 'Sugiere productos complementarios en tiempo real basados en el carrito.',
 minPlan: 'growth',

@@ -15,12 +15,18 @@ export async function POST(req: Request) {
       politicas, 
       faqs, 
       exit_intent, 
-      recomendador, 
+      cross_selling,       
       modo_persuasivo, 
+      detector_idioma,     
+      carrito_abandonado,  
+      analisis_sentimiento,
+      cupones_flash,       
       plan,
       color_primario,
       mensaje_bienvenida,
-      avatar_url
+      avatar_url,
+      posicion,            // <-- Añadido para la personalización avanzada
+      nombre_asistente     // <-- Añadido para la personalización avanzada
     } = body;
 
     if (!user_id) {
@@ -36,12 +42,18 @@ export async function POST(req: Request) {
           politicas,
           faqs,
           exit_intent,
-          recomendador,
+          cross_selling,       
           modo_persuasivo,
+          detector_idioma,     
+          carrito_abandonado,  
+          analisis_sentimiento,
+          cupones_flash,       
           plan: plan || 'starter',
           color_primario: color_primario || '#f43f5e',
           mensaje_bienvenida: mensaje_bienvenida || '¡Hola! ¿Cómo puedo ayudarte hoy?',
           avatar_url: avatar_url || 'default',
+          posicion: posicion || 'derecha',
+          nombre_asistente: nombre_asistente || 'Asistente Virtual IA',
         },
         { onConflict: 'user_id' }
       );
