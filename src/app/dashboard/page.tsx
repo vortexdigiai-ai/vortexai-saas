@@ -21,6 +21,7 @@ Lock,
 Crown,
 Palette
 } from 'lucide-react'
+
 export default function DashboardPage() {
 // Estados para la personalización avanzada del widget 
 const [avatarUrlCustom, setAvatarUrlCustom] = useState('');
@@ -31,10 +32,14 @@ const [formNombre, setFormNombre] = useState('');
 const [formEmail, setFormEmail] = useState('');
 const [formMensaje, setFormMensaje] = useState('');
 const [enviandoForm, setEnviandoForm] = useState(false);
+
+// Añadidas las pestañas "flujos-hibridos" y "analiticas" para corregir el error de tipado
 const [activeTab, setActiveTab] = useState<'overview' | 'catalogo' |
 'ia' | 'personalizacion' | 'widget' | 'logs' | 'settings' |
-'planes'>('overview')
+'planes' | 'flujos-hibridos' | 'analiticas'>('overview')
+
 const [copiado, setCopiado] = useState(false);
+
 // Estados de configuración e IA
 const [exitIntent, setExitIntent] = useState(false)
 const [recomendador, setRecomendador] = useState(true)
@@ -43,16 +48,20 @@ const [detectorIdioma, setDetectorIdioma] = useState(true)
 const [carritoAbandonado, setCarritoAbandonado] = useState(false)
 const [analisisSentimiento, setAnalisisSentimiento] = useState(false)
 const [cuponesFlash, setCuponesFlash] = useState(false)
+
 // Estado del Plan del cliente ('free', 'starter', 'growth', 'pro', 'custom')
 const [planCliente, setPlanCliente] = useState('free')
+
 // Estados de Personalización (Colores y Estilos)
 const [colorPrimario, setColorPrimario] = useState('#f43f5e')
 const [mensajeBienvenida, setMensajeBienvenida] = useState('¡Hola! 👋 Soy el asistente virtual de tu tienda. Pregúntame sobre envíos o productos.')
 const [avatarEstilo, setAvatarEstilo] = useState('moderno')
+
 // Estados para políticas y envíos
 const [tiemposEnvio, setTiemposEnvio] = useState('')
 const [politicas, setPoliticas] = useState('')
 const [faqs, setFaqs] = useState('')
+
 // Estados y función para el simulador del chat
 const [chatMensajes, setChatMensajes] = useState<Array<{ remitente:
 'user' | 'ai', texto: string }>>([
@@ -60,15 +69,21 @@ const [chatMensajes, setChatMensajes] = useState<Array<{ remitente:
 ])
 const [inputChat, setInputChat] = useState('')
 const [isTyping, setIsTyping] = useState(false)
+
 // Estados para Flujos Híbridos y Reglas de Escape
 const [accionFallback, setAccionFallback] = useState('formulario'); // 'formulario' | 'whatsapp' | 'email'
 const [whatsappSoporte, setWhatsappSoporte] = useState('');
 const [umbralFrustracion, setUmbralFrustracion] = useState('2'); // Intentos antes de derivar
 const [mensajeFallback, setMensajeFallback] = useState('Vaya, parece que no tengo esa información exacta. Déjanos tus datos y un especialista humano te contactará de inmediato.');
+
 // Estado para las interacciones reales en tiempo real
 const [chatsHoy, setChatsHoy] = useState(0)
 const [guardandoConfig, setGuardandoConfig] = useState(false)
 const [userId, setUserId] = useState<string>('')
+
+// Estados de Logs que faltaban por declarar (para solucionar el error de TypeScript)
+const [cargandoLogs, setCargandoLogs] = useState(false)
+const [logsConversaciones, setLogsConversaciones] = useState<any[]>([])
 
 useEffect(() => {
   async function obtenerUsuario() {
@@ -79,6 +94,7 @@ useEffect(() => {
   }
   obtenerUsuario()
 }, [])
+
 // Función para manejar el envío de mensajes del chat de prueba y guardarlos en la tabla real
 const manejarEnvioChat = async (e?: React.FormEvent) => {
 if (e) e.preventDefault();
@@ -115,6 +131,7 @@ console.error('Error al guardar interacción en Supabase:', err);
 }
 }, 800);
 };
+
 // Cargar datos de la tienda y métricas en tiempo real desde Supabase al iniciar
 useEffect(() => {
 async function cargarDatosYMetricas() {
@@ -158,7 +175,10 @@ console.log('Error al cargar datos y métricas:', err);
 setCargandoDatos(false);
 }
 }
+if (userId) {
 cargarDatosYMetricas();
+}
+
 // 3. Suscripción en tiempo real (Realtime) para el contador de chats
 const channel = supabase
 .channel('cambios-interacciones')
@@ -179,6 +199,7 @@ return () => {
 supabase.removeChannel(channel);
 };
 }, [userId]);
+
 // Guardar configuración completa en la tabla 'tiendas'
 const guardarConfiguracion = async () => {
 setGuardandoConfig(true)
@@ -213,129 +234,130 @@ alert('Hubo un error: ' + err.message)
 setGuardandoConfig(false)
 }
 }
-// Estados y lógica de Analíticas (van arriba en la raíz del componente)
-  const [rangoFechas, setRangoFechas] = useState('7d');
-  const [metricasReales, setMetricasReales] = useState({
-    totalChats: 0,
-    tasaResolucion: '95.2%',
-    mensajesProcesados: 0,
-    leadsCustom: 3
-  });
-  const [productosFrecuentes, setProductosFrecuentes] = useState([
-    { nombre: 'Cargando datos del catálogo...', consultas: '0 preguntas', porcentaje: '0%' }
-  ]);
-  const [cargandoDatos, setCargandoDatos] = useState(true);
 
-  useEffect(() => {
-    async function obtenerAnaliticasAvanzadas() {
-      try {
-        setCargandoDatos(true);
-        const { data, count, error } = await supabase
-          .from('interacciones_chat')
-          .select('*', { count: 'exact' })
-          .eq('user_id', userId)
-          .order('created_at', { ascending: false });
+// Estados y lógica de Analíticas
+const [rangoFechas, setRangoFechas] = useState('7d');
+const [metricasReales, setMetricasReales] = useState({
+  totalChats: 0,
+  tasaResolucion: '95.2%',
+  mensajesProcesados: 0,
+  leadsCustom: 3
+});
+const [productosFrecuentes, setProductosFrecuentes] = useState([
+  { nombre: 'Cargando datos del catálogo...', consultas: '0 preguntas', porcentaje: '0%' }
+]);
+const [cargandoDatos, setCargandoDatos] = useState(true);
 
-        if (!error && data) {
-          const totalMsgs = count || data.length;
-          const chatsUnicos = Math.ceil(totalMsgs / 2);
-
-          setMetricasReales({
-            totalChats: chatsUnicos,
-            tasaResolucion: '95.2%',
-            mensajesProcesados: totalMsgs,
-            leadsCustom: Math.floor(chatsUnicos * 0.15)
-          });
-
-          const conteoTemas: { [key: string]: number } = {
-            'Consultas Generales de Catálogo': 0,
-            'Envíos y Plazos de Entrega': 0,
-            'Políticas de Devolución': 0,
-            'Precios y Descuentos': 0
-          };
-
-          data.forEach((item: any) => {
-            const txt = (item.texto || '').toLowerCase();
-            if (txt.includes('envío') || txt.includes('tard') || txt.includes('llega')) {
-              conteoTemas['Envíos y Plazos de Entrega']++;
-            } else if (txt.includes('devolv') || txt.includes('cambio') || txt.includes('devolución')) {
-              conteoTemas['Políticas de Devolución']++;
-            } else if (txt.includes('precio') || txt.includes('cupon') || txt.includes('descuento')) {
-              conteoTemas['Precios y Descuentos']++;
-            } else {
-              conteoTemas['Consultas Generales de Catálogo']++;
-            }
-          });
-
-          const listaProcesada = Object.keys(conteoTemas).map((tema) => {
-            const cantidad = conteoTemas[tema];
-            const maxVal = Math.max(...Object.values(conteoTemas), 1);
-            const porcentajeNum = Math.round((cantidad / maxVal) * 100);
-            return {
-              nombre: tema,
-              consultas: `${cantidad} interacciones`,
-              porcentaje: `${Math.max(porcentajeNum, 10)}%`
-            };
-          });
-
-          setProductosFrecuentes(listaProcesada);
-        }
-      } catch (err) {
-        console.error("Error al cargar analíticas avanzadas:", err);
-      } finally {
-        setCargandoDatos(false);
-      }
-    }
-
-    if (userId) {
-      obtenerAnaliticasAvanzadas();
-    }
-
-    const subscription = supabase
-      .channel('cambios-analiticas-avanzadas')
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'interacciones_chat' }, () => {
-        if (userId) obtenerAnaliticasAvanzadas();
-      })
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(subscription);
-    };
-  }, [userId, rangoFechas]);
-
-  const descargarCSVReal = async () => {
+useEffect(() => {
+  async function obtenerAnaliticasAvanzadas() {
     try {
-      const { data, error } = await supabase
+      setCargandoDatos(true);
+      const { data, count, error } = await supabase
         .from('interacciones_chat')
-        .select('created_at, remitente, texto')
+        .select('*', { count: 'exact' })
         .eq('user_id', userId)
         .order('created_at', { ascending: false });
 
-      if (error || !data || data.length === 0) {
-        alert("No hay suficientes datos registrados todavía para exportar.");
-        return;
+      if (!error && data) {
+        const totalMsgs = count || data.length;
+        const chatsUnicos = Math.ceil(totalMsgs / 2);
+
+        setMetricasReales({
+          totalChats: chatsUnicos,
+          tasaResolucion: '95.2%',
+          mensajesProcesados: totalMsgs,
+          leadsCustom: Math.floor(chatsUnicos * 0.15)
+        });
+
+        const conteoTemas: { [key: string]: number } = {
+          'Consultas Generales de Catálogo': 0,
+          'Envíos y Plazos de Entrega': 0,
+          'Políticas de Devolución': 0,
+          'Precios y Descuentos': 0
+        };
+
+        data.forEach((item: any) => {
+          const txt = (item.texto || '').toLowerCase();
+          if (txt.includes('envío') || txt.includes('tard') || txt.includes('llega')) {
+            conteoTemas['Envíos y Plazos de Entrega']++;
+          } else if (txt.includes('devolv') || txt.includes('cambio') || txt.includes('devolución')) {
+            conteoTemas['Políticas de Devolución']++;
+          } else if (txt.includes('precio') || txt.includes('cupon') || txt.includes('descuento')) {
+            conteoTemas['Precios y Descuentos']++;
+          } else {
+            conteoTemas['Consultas Generales de Catálogo']++;
+          }
+        });
+
+        const listaProcesada = Object.keys(conteoTemas).map((tema) => {
+          const cantidad = conteoTemas[tema];
+          const maxVal = Math.max(...Object.values(conteoTemas), 1);
+          const porcentajeNum = Math.round((cantidad / maxVal) * 100);
+          return {
+            nombre: tema,
+            consultas: `${cantidad} interacciones`,
+            porcentaje: `${Math.max(porcentajeNum, 10)}%`
+          };
+        });
+
+        setProductosFrecuentes(listaProcesada);
       }
-
-      let csvContent = "data:text/csv;charset=utf-8,Fecha,Remitente,Mensaje\n";
-      data.forEach((row: any) => {
-        const fechaLimpia = new Date(row.created_at).toLocaleString();
-        const textoLimpio = `"${(row.texto || '').replace(/"/g, '""')}"`;
-        csvContent += `${fechaLimpia},${row.remitente},${textoLimpio}\n`;
-      });
-
-      const encodedUri = encodeURI(csvContent);
-      const link = document.createElement("a");
-      link.setAttribute("href", encodedUri);
-      link.setAttribute("download", `vortex_analiticas_chats_${new Date().toISOString().slice(0, 10)}.csv`);
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-    } catch (e) {
-      console.error("Error al exportar CSV:", e);
-      alert("Hubo un error al generar el archivo CSV.");
+    } catch (err) {
+      console.error("Error al cargar analíticas avanzadas:", err);
+    } finally {
+      setCargandoDatos(false);
     }
+  }
+
+  if (userId) {
+    obtenerAnaliticasAvanzadas();
+  }
+
+  const subscription = supabase
+    .channel('cambios-analiticas-avanzadas')
+    .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'interacciones_chat' }, () => {
+      if (userId) obtenerAnaliticasAvanzadas();
+    })
+    .subscribe();
+
+  return () => {
+    supabase.removeChannel(subscription);
   };
-  
+}, [userId, rangoFechas]);
+
+const descargarCSVReal = async () => {
+  try {
+    const { data, error } = await supabase
+      .from('interacciones_chat')
+      .select('created_at, remitente, texto')
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false });
+
+    if (error || !data || data.length === 0) {
+      alert("No hay suficientes datos registrados todavía para exportar.");
+      return;
+    }
+
+    let csvContent = "data:text/csv;charset=utf-8,Fecha,Remitente,Mensaje\n";
+    data.forEach((row: any) => {
+      const fechaLimpia = new Date(row.created_at).toLocaleString();
+      const textoLimpio = `"${(row.texto || '').replace(/"/g, '""')}"`;
+      csvContent += `${fechaLimpia},${row.remitente},${textoLimpio}\n`;
+    });
+
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", `vortex_analiticas_chats_${new Date().toISOString().slice(0, 10)}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  } catch (e) {
+    console.error("Error al exportar CSV:", e);
+    alert("Hubo un error al generar el archivo CSV.");
+  }
+};
+
 // Verificador de planes avanzados
 const esPlanGrowthSuperior = planCliente === 'growth' || planCliente ===
 'pro' || planCliente === 'custom'

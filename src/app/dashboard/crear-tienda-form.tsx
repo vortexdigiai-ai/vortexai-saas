@@ -5,7 +5,7 @@ import { createClient } from '@/lib/supabase-browser'
 import { useRouter } from 'next/navigation'
 
 export default function CrearTiendaForm({ userId }: { userId: string }) {
-  const [nombre, setNombre] = useState('')
+  const [nombreTienda, setNombreTienda] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const router = useRouter()
@@ -18,7 +18,7 @@ export default function CrearTiendaForm({ userId }: { userId: string }) {
     const supabase = createClient()
     const { error } = await supabase.from('tiendas').insert({
       user_id: userId,
-      nombre_tienda: nombre,
+      nombre_tienda: nombreTienda,
       plan: 'starter',
     })
 

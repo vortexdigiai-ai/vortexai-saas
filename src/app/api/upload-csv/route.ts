@@ -14,7 +14,7 @@ export async function POST(req: Request) {
     const nombreTienda = formData.get('nombre_tienda') as string;
 
     if (!file) {
-      return NextResponse.json({ error: 'No se ha subido ningún archivo.' }, { status: 400 });
+      return NextResponse.json({ error: 'No se ha subido ningún archivo.' }, { status: { code: 400 } as any });
     }
 
     const bufferText = await file.text();
@@ -36,14 +36,14 @@ export async function POST(req: Request) {
     });
 
     const { error } = await supabase
-      .from('tu_tabla')
+      .from('tiendas')
       .upsert([
         {
-          user_id: userId,
-          nombre_tienda: nombreTienda,
+          user_id: userId || '',
+          nombre_tienda: nombreTienda || 'Mi Tienda',
           productos_json: records,
         }
-      ], { onConflict: ['user_id'] });
+      ], { onConflict: 'user_id' });
 
     if (error) {
       console.error('Error de Supabase:', error);
@@ -54,6 +54,6 @@ export async function POST(req: Request) {
 
   } catch (err: any) {
     console.error('Error procesando CSV:', err);
-    return NextResponse.json({ error: 'Hubo un error al procesar el archivo: ' + err.message }, { status: 500 });
+    return NextResponse.json({ error: 'Hubo un error al procesar el archivo: ' + (err.message || err) }, { status: 500 });
   }
 }
