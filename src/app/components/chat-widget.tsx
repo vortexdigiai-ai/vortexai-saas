@@ -13,7 +13,6 @@ export default function ChatWidget({ tiendaId }: { tiendaId?: number | string })
   const [colorPrimario, setColorPrimario] = useState('#f43f5e') 
   const [posicion, setPosicion] = useState<'derecha' | 'izquierda'>('derecha')
   const [avatarUrl, setAvatarUrl] = useState('default')
-  const [inicializado, setInicializado] = useState(false)
 
   const [mensajes, setMensajes] = useState<Mensaje[]>([
     { rol: 'bot', texto: '¡Hola! ¿Cómo puedo ayudarte hoy?' }
@@ -39,34 +38,70 @@ export default function ChatWidget({ tiendaId }: { tiendaId?: number | string })
   const idActual = obtenerTiendaIdReal()
 
   // Función para cargar la configuración evitando la caché de Vercel/Navegador
-  const cargarConfiguracion = useCallback(async () => {
-    try {
-      const res = await fetch(`/api/obtener-config?tiendaId=${idActual}&t=${Date.now()}`, {
-        cache: 'no-store'
-      })
-      if (!res.ok) return
-      const data = await res.json()
-
-      if (data && !data.error) {
-        if (data.nombre_asistente) setNombreAsistente(data.nombre_asistente)
-        // Aplicamos el color directamente garantizando que si existe se use
-        if (data.color_primario) setColorPrimario(data.color_primario)
-        if (data.avatar_url) setAvatarUrl(data.avatar_url)
-        
-        if (data.posicion) {
-          const posLimpia = data.posicion.toString().toLowerCase().trim()
-          setPosicion(posLimpia.includes('izq') ? 'izquierda' : 'derecha')
-        }
-        
-        if (data.mensaje_bienvenida && !inicializado) {
-          setMensajes([{ rol: 'bot', texto: data.mensaje_bienvenida }])
-          setInicializado(true)
-        }
+ const cargarConfiguracion = useCallback(async () => {
+  try {
+    const res = await fetch(
+      `/api/obtener-config?tiendaId=${encodeURIComponent(String(idActual))}&t=${Date.now()}`,
+      {
+        cache: 'no-store',
       }
-    } catch (err) {
-      console.error('Error sincronizando widget:', err)
+    )
+
+    if (!res.ok) {
+      console.error(
+        'Error obteniendo configuración:',
+        res.status,
+        res.statusText
+      )
+      return
     }
-  }, [idActual, inicializado])
+
+    const data = await res.json()
+
+    console.log('Configuración recibida por el widget:', data)
+
+    if (data && !data.error) {
+      if (data.nombre_asistente) {
+        setNombreAsistente(data.nombre_asistente)
+      }
+
+      if (data.color_primario) {
+        setColorPrimario(data.color_primario)
+      }
+
+      if (data.avatar_url) {
+        setAvatarUrl(data.avatar_url)
+      }
+
+      if (data.posicion) {
+        const posLimpia = data.posicion
+          .toString()
+          .toLowerCase()
+          .trim()
+
+        setPosicion(
+          posLimpia.includes('izq')
+            ? 'izquierda'
+            : 'derecha'
+        )
+      }
+
+      if (data.mensaje_bienvenida) {
+        setMensajes([
+          {
+            rol: 'bot',
+            texto: data.mensaje_bienvenida,
+          },
+        ])
+      }
+    }
+  } catch (err) {
+    console.error(
+      'Error sincronizando configuración del widget:',
+      err
+    )
+  }
+}, [idActual])
 
   useEffect(() => {
     cargarConfiguracion()
