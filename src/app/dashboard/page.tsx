@@ -204,12 +204,11 @@ supabase.removeChannel(channel);
 const guardarConfiguracion = async () => {
   setGuardandoConfig(true);
   try {
-    // Determinamos la URL final del avatar según lo que el usuario haya seleccionado en el panel
     let avatarFinal = 'default';
     if (avatarEstilo === 'custom') {
       avatarFinal = avatarUrlCustom || 'default';
     } else if (avatarEstilo === 'sparkle') {
-      avatarFinal = 'sparkle'; // O una URL de icono de chispa si prefieres
+      avatarFinal = 'sparkle';
     } else {
       avatarFinal = 'moderno';
     }
@@ -218,12 +217,12 @@ const guardarConfiguracion = async () => {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        user_id: user_id, // O el ID de la tienda actual
+        user_id: userId, // <--- Aquí usamos la variable correcta de tu dashboard (userId)
         color_primario: colorPrimario,
         mensaje_bienvenida: mensajeBienvenida,
         nombre_asistente: nombreAsistente,
         posicion: posicionWidget,
-        avatar_url: avatarFinal, // <--- Aquí enviamos el avatar correctamente mapeado
+        avatar_url: avatarFinal,
       }),
     });
 
