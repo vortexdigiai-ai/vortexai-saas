@@ -1,6 +1,6 @@
-import ChatWidget from '../../components/chat-widget'
+import ChatWidget from '@/components/chat-widget'
 
-export default async function WidgetPage({
+export default async function Page({
   params,
 }: {
   params: Promise<{ tiendaId: string }>
@@ -8,8 +8,8 @@ export default async function WidgetPage({
   const { tiendaId } = await params
 
   return (
-    <main className="bg-transparent min-h-screen pointer-events-none">
+    <div className="bg-transparent w-screen h-screen overflow-hidden pointer-events-none">
       <ChatWidget tiendaId={Number(tiendaId)} />
-    </main>
+    </div>
   )
 }
