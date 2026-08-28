@@ -1,4 +1,4 @@
-import ChatWidget from '@/components/chat-widget'
+import ChatWidget from '../../../components/chat-widget'
 
 export default async function Page({
   params,
