@@ -6,45 +6,86 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 );
 
-export async function GET(req: Request) {
+export async function POST(req: Request) {
   try {
-    const { searchParams } = new URL(req.url);
-    const tiendaId = searchParams.get('tiendaId');
+    const body = await req.json().catch(() => ({}));
+    const user_id = body.user_id || body.tiendaId;
 
-    if (!tiendaId) {
-      return NextResponse.json({ error: 'Falta el tiendaId' }, { status: 400 });
+    if (!user_id) {
+      return NextResponse.json({ error: 'Falta el ID de usuario o tienda' }, { status: 400 });
     }
 
-    // Buscamos primero por user_id
-    let { data, error } = await supabase
+    const updateData: Record<string, any> = { user_id };
+
+    const camposPosibles = [
+      'tiempos_envio', 
+      'politicas', 
+      'faqs', 
+      'exit_intent', 
+      'cross_selling',       
+      'modo_persuasivo', 
+      'detector_idioma',     
+      'carrito_abandonado',  
+      'analisis_sentimiento',
+      'cupones_flash',       
+      'plan'
+    ];
+
+    for (const campo of camposPosibles) {
+      if (body[campo] !== undefined) {
+        updateData[campo] = body[campo];
+      }
+    }
+
+    // Mapeo seguro de diseño
+    if (body.color_primario || body.colorPrimario) {
+      updateData.color_primario = body.color_primario || body.colorPrimario;
+    }
+    if (body.mensaje_bienvenida || body.mensajeBienvenida) {
+      updateData.mensaje_bienvenida = body.mensaje_bienvenida || body.mensajeBienvenida;
+    }
+    if (body.avatar_url || body.avatarUrl) {
+      updateData.avatar_url = body.avatar_url || body.avatarUrl;
+    }
+    if (body.posicion !== undefined) {
+      updateData.posicion = body.posicion;
+    }
+    if (body.nombre_asistente || body.nombreAsistente) {
+      updateData.nombre_asistente = body.nombre_asistente || body.nombreAsistente;
+    }
+
+    // Comprobamos si la tienda ya existe para decidir si hacemos insert o update
+    const { data: tiendaExistente } = await supabase
       .from('tiendas')
-      .select('*')
-      .eq('user_id', tiendaId)
+      .select('user_id')
+      .eq('user_id', user_id)
       .maybeSingle();
 
-    // Si no lo encuentra por user_id, probamos por si la tabla usa otra columna de identificación
-    if (!data) {
-      const altQuery = await supabase
+    let errorSupabase = null;
+
+    if (tiendaExistente) {
+      // Si existe, actualizamos
+      const resUpdate = await supabase
         .from('tiendas')
-        .select('*')
-        .eq('id', tiendaId)
-        .maybeSingle();
-      data = altQuery.data;
+        .update(updateData)
+        .eq('user_id', user_id);
+      errorSupabase = resUpdate.error;
+    } else {
+      // Si no existe, insertamos con los campos obligatorios cubiertos
+      const resInsert = await supabase
+        .from('tiendas')
+        .insert([updateData]);
+      errorSupabase = resInsert.error;
     }
 
-    if (!data) {
-      // Si de verdad no existe la fila en Supabase, devolvemos valores por defecto limpios en vez de error 500
-      return NextResponse.json({
-        color_primario: '#f43f5e',
-        nombre_asistente: 'Asistente Virtual IA',
-        mensaje_bienvenida: '¡Hola! ¿Cómo puedo ayudarte hoy?',
-        posicion: 'derecha',
-        avatar_url: 'moderno'
-      });
+    if (errorSupabase) {
+      console.error('Error de Supabase al guardar:', errorSupabase);
+      return NextResponse.json({ error: errorSupabase.message }, { status: 500 });
     }
 
-    return NextResponse.json(data);
+    return NextResponse.json({ success: true });
   } catch (err: any) {
-    return NextResponse.json({ error: err.message }, { status: 500 });
+    console.error('Error crítico en API guardar-config:', err);
+    return NextResponse.json({ error: err.message || 'Error interno del servidor' }, { status: 500 });
   }
 }
