@@ -10,31 +10,35 @@ type Mensaje = {
 export default function ChatWidget({ tiendaId }: { tiendaId: number }) {
   const [abierto, setAbierto] = useState(false)
   const [nombreAsistente, setNombreAsistente] = useState('Asistente de la tienda')
-  const [mensajeBienvenida, setMensajeBienvenida] = useState('¡Hola! ¿En qué puedo ayudarte hoy?')
   const [colorPrimario, setColorPrimario] = useState('#000000')
   const [posicion, setPosicion] = useState<'derecha' | 'izquierda'>('derecha')
 
-  const [mensajes, setMensajes] = useState<Mensaje[]>([])
+  const [mensajes, setMensajes] = useState<Mensaje[]>([
+    { rol: 'bot', texto: '¡Hola! ¿En qué puedo ayudarte hoy?' }
+  ])
   const [input, setInput] = useState('')
   const [cargando, setCargando] = useState(false)
   const finRef = useRef<HTMLDivElement>(null)
 
-  // Función para consultar la configuración a Supabase
+  // Cargar configuración de la tienda una sola vez al montar el componente
   useEffect(() => {
     async function cargarConfiguracion() {
       try {
+        if (!tiendaId) return
         const res = await fetch(`/api/obtener-config?tiendaId=${tiendaId}`)
         if (!res.ok) return
         const data = await res.json()
 
         if (data) {
-          if (data.nombre_asistente) setNombreAsistente(data.nombre_asistente)
-          if (data.mensaje_bienvenida && mensajes.length <= 1) {
-            setMensajeBienvenida(data.mensaje_bienvenida)
+          if (data.nombre_asistente) {
+            setNombreAsistente(data.nombre_asistente)
+          }
+          if (data.mensaje_bienvenida) {
             setMensajes([{ rol: 'bot', texto: data.mensaje_bienvenida }])
           }
-          if (data.color_primario) setColorPrimario(data.color_primario)
-          
+          if (data.color_primario) {
+            setColorPrimario(data.color_primario)
+          }
           if (data.posicion) {
             const posLimpia = data.posicion.toString().toLowerCase().trim()
             if (posLimpia === 'izquierda' || posLimpia === 'left') {
@@ -45,23 +49,16 @@ export default function ChatWidget({ tiendaId }: { tiendaId: number }) {
           }
         }
       } catch (err) {
-        console.error('Error sincronizando widget:', err)
+        console.error('Error cargando configuración:', err)
       }
     }
 
-    if (!tiendaId) return
-
-    // Carga inicial
     cargarConfiguracion()
-
-    // Sincronización en tiempo real cada 3 segundos sin recargar la página
-    const intervalo = setInterval(cargarConfiguracion, 3000)
-    return () => clearInterval(intervalo)
   }, [tiendaId])
 
   useEffect(() => {
     finRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [mensajes])
+  }, [mensajes, abierto])
 
   async function enviarMensaje(e: React.FormEvent) {
     e.preventDefault()
@@ -94,7 +91,6 @@ export default function ChatWidget({ tiendaId }: { tiendaId: number }) {
     }
   }
 
-  // Clases dinámicas exactas según la posición (izquierda o derecha)
   const posicionContenedor = posicion === 'izquierda' ? 'fixed bottom-6 left-6' : 'fixed bottom-6 right-6'
   const posicionVentana = posicion === 'izquierda' ? 'left-0' : 'right-0'
 
