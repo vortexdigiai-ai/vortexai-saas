@@ -8,8 +8,8 @@ export default async function WidgetPage({
   const { tiendaId } = await params
 
   return (
-    <div className="bg-transparent">
+    <main className="bg-transparent min-h-screen pointer-events-none">
       <ChatWidget tiendaId={Number(tiendaId)} />
-    </div>
+    </main>
   )
 }
