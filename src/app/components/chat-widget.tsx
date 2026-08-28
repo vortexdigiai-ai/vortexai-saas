@@ -19,7 +19,6 @@ export default function ChatWidget({ tiendaId }: { tiendaId: number }) {
   const [cargando, setCargando] = useState(false)
   const finRef = useRef<HTMLDivElement>(null)
 
-  // Cargar configuración personalizada de la tienda desde Supabase al iniciar
   useEffect(() => {
     async function cargarConfiguracion() {
       try {
@@ -36,10 +35,18 @@ export default function ChatWidget({ tiendaId }: { tiendaId: number }) {
             setMensajes([{ rol: 'bot', texto: '¡Hola! ¿En qué puedo ayudarte hoy?' }])
           }
           if (data.color_primario) setColorPrimario(data.color_primario)
-          if (data.posicion) setPosicion(data.posicion)
+          // Forzamos minúsculas por seguridad para comparar
+          if (data.posicion) {
+            const posLimpia = data.posicion.toString().toLowerCase().trim()
+            if (posLimpia === 'izquierda' || posLimpia === 'left') {
+              setPosicion('izquierda')
+            } else {
+              setPosicion('derecha')
+            }
+          }
         }
       } catch (err) {
-        console.error('Error cargando configuración del widget:', err)
+        console.error('Error cargando configuración:', err)
         setMensajes([{ rol: 'bot', texto: '¡Hola! ¿En qué puedo ayudarte hoy?' }])
       }
     }
@@ -86,14 +93,14 @@ export default function ChatWidget({ tiendaId }: { tiendaId: number }) {
     }
   }
 
-  // Posicionamiento dinámico (derecha o izquierda)
-  const posicionClase = posicion === 'izquierda' ? 'fixed bottom-6 left-6' : 'fixed bottom-6 right-6'
+  // Clases dinámicas según la posición seleccionada en el panel
+  const posicionContenedor = posicion === 'izquierda' ? 'fixed bottom-6 left-6' : 'fixed bottom-6 right-6'
+  const posicionVentana = posicion === 'izquierda' ? 'left-0' : 'right-0'
 
   return (
-    <div className={`${posicionClase} z-[999999] pointer-events-auto`}>
+    <div className={`${posicionContenedor} z-[999999] pointer-events-auto bg-transparent`}>
       {abierto && (
-        <div className={`absolute bottom-20 ${posicion === 'izquierda' ? 'left-0' : 'right-0'} w-80 h-96 bg-white border border-gray-200 rounded-2xl shadow-2xl flex flex-col overflow-hidden animate-in fade-in slide-in-from-bottom-3 duration-200`}>
-          {/* Cabecera con el color personalizado */}
+        <div className={`absolute bottom-20 ${posicionVentana} w-80 h-96 bg-white border border-gray-200 rounded-2xl shadow-2xl flex flex-col overflow-hidden animate-in fade-in slide-in-from-bottom-3 duration-200`}>
           <div 
             className="text-white px-4 py-3 font-medium flex justify-between items-center text-sm"
             style={{ backgroundColor: colorPrimario }}
@@ -150,7 +157,6 @@ export default function ChatWidget({ tiendaId }: { tiendaId: number }) {
         </div>
       )}
 
-      {/* Botón flotante con el color corporativo personalizado */}
       <button
         onClick={() => setAbierto(!abierto)}
         className="text-white w-14 h-14 rounded-full shadow-2xl flex items-center justify-center text-2xl hover:scale-105 transition-transform cursor-pointer"

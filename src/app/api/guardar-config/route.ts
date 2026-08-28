@@ -25,8 +25,13 @@ export async function POST(req: Request) {
       color_primario,
       mensaje_bienvenida,
       avatar_url,
-      posicion,            // <-- Añadido para la personalización avanzada
-      nombre_asistente     // <-- Añadido para la personalización avanzada
+      posicion,            
+      nombre_asistente,
+      // Capturamos variantes por si el frontend las manda en camelCase
+      nombreAsistente,
+      colorPrimario,
+      mensajeBienvenida,
+      avatarUrl
     } = body;
 
     if (!user_id) {
@@ -49,11 +54,11 @@ export async function POST(req: Request) {
           analisis_sentimiento,
           cupones_flash,       
           plan: plan || 'starter',
-          color_primario: color_primario || '#f43f5e',
-          mensaje_bienvenida: mensaje_bienvenida || '¡Hola! ¿Cómo puedo ayudarte hoy?',
-          avatar_url: avatar_url || 'default',
+          color_primario: color_primario || colorPrimario || '#f43f5e',
+          mensaje_bienvenida: mensaje_bienvenida || mensajeBienvenida || '¡Hola! ¿Cómo puedo ayudarte hoy?',
+          avatar_url: avatar_url || avatarUrl || 'default',
           posicion: posicion || 'derecha',
-          nombre_asistente: nombre_asistente || 'Asistente Virtual IA',
+          nombre_asistente: nombre_asistente || nombreAsistente || 'Asistente Virtual IA',
         },
         { onConflict: 'user_id' }
       );
