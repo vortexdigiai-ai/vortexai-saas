@@ -10,10 +10,10 @@ type Mensaje = {
 export default function ChatWidget({ tiendaId }: { tiendaId?: number | string }) {
   const [abierto, setAbierto] = useState(false)
   const [nombreAsistente, setNombreAsistente] = useState('Asistente Virtual IA')
-  const [colorPrimario, setColorPrimario] = useState('#f43f5e') // Color rosa por defecto si falla
+  const [colorPrimario, setColorPrimario] = useState('#f43f5e') 
   const [posicion, setPosicion] = useState<'derecha' | 'izquierda'>('derecha')
-  const [avatarUrl, setAvatarUrl] = useState('')
-  const [bienvenidaCargada, setBienvenidaCargada] = useState(false)
+  const [avatarUrl, setAvatarUrl] = useState('default')
+  const [inicializado, setInicializado] = useState(false)
 
   const [mensajes, setMensajes] = useState<Mensaje[]>([
     { rol: 'bot', texto: '¡Hola! ¿Cómo puedo ayudarte hoy?' }
@@ -22,7 +22,6 @@ export default function ChatWidget({ tiendaId }: { tiendaId?: number | string })
   const [cargando, setCargando] = useState(false)
   const finRef = useRef<HTMLDivElement>(null)
 
-  // Obtener el ID
   const obtenerTiendaIdReal = () => {
     if (tiendaId) return tiendaId
     if (typeof window !== 'undefined') {
@@ -35,43 +34,39 @@ export default function ChatWidget({ tiendaId }: { tiendaId?: number | string })
 
   const idActual = obtenerTiendaIdReal()
 
-  // Carga y sincronización en tiempo real
+  // Sincronización en tiempo real con Supabase
   useEffect(() => {
     async function cargarConfiguracion() {
       try {
         const res = await fetch(`/api/obtener-config?tiendaId=${idActual}`)
-        if (!res.ok) {
-          console.error('Error al contactar con la API de configuración')
-          return
-        }
-        
+        if (!res.ok) return
         const data = await res.json()
-        console.log('Datos recibidos en el widget:', data) // PARA DEPURAR
 
         if (data && !data.error) {
           if (data.nombre_asistente) setNombreAsistente(data.nombre_asistente)
           if (data.color_primario) setColorPrimario(data.color_primario)
-          if (data.avatar_url && data.avatar_url !== 'default') setAvatarUrl(data.avatar_url)
+          if (data.avatar_url) setAvatarUrl(data.avatar_url)
           
           if (data.posicion) {
-            setPosicion(data.posicion.toString().toLowerCase().includes('izq') ? 'izquierda' : 'derecha')
+            const posLimpia = data.posicion.toString().toLowerCase().trim()
+            setPosicion(posLimpia.includes('izq') ? 'izquierda' : 'derecha')
           }
           
-          // Solo actualiza la bienvenida si no se ha cargado ya
-          if (data.mensaje_bienvenida && !bienvenidaCargada) {
+          // Actualizamos el mensaje de bienvenida solo la primera vez para no machacar el chat activo
+          if (data.mensaje_bienvenida && !inicializado) {
             setMensajes([{ rol: 'bot', texto: data.mensaje_bienvenida }])
-            setBienvenidaCargada(true)
+            setInicializado(true)
           }
         }
       } catch (err) {
-        console.error('Error de red cargando configuración:', err)
+        console.error('Error sincronizando widget:', err)
       }
     }
 
     cargarConfiguracion()
-    const intervalo = setInterval(cargarConfiguracion, 4000) // Sincroniza cada 4s
+    const intervalo = setInterval(cargarConfiguracion, 3000) // Revisa cambios cada 3 segundos
     return () => clearInterval(intervalo)
-  }, [idActual, bienvenidaCargada])
+  }, [idActual, inicializado])
 
   useEffect(() => {
     finRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -105,6 +100,17 @@ export default function ChatWidget({ tiendaId }: { tiendaId?: number | string })
     }
   }
 
+  // Renderizador inteligente del icono / avatar
+  const renderAvatarContent = (esCabecera = false) => {
+    if (avatarUrl.startsWith('http://') || avatarUrl.startsWith('https://')) {
+      return <img src={avatarUrl} alt="Avatar" className={`${esCabecera ? 'w-6 h-6' : 'w-full h-full'} rounded-full object-cover bg-white`} />
+    }
+    if (avatarUrl === 'sparkle') {
+      return <span className={esCabecera ? 'text-base' : 'text-2xl'}>✨</span>
+    }
+    return <span className={esCabecera ? 'text-base' : 'text-2xl'}>🤖</span>
+  }
+
   const posicionContenedor = posicion === 'izquierda' ? 'fixed bottom-6 left-6' : 'fixed bottom-6 right-6'
   const posicionVentana = posicion === 'izquierda' ? 'left-0' : 'right-0'
 
@@ -113,13 +119,11 @@ export default function ChatWidget({ tiendaId }: { tiendaId?: number | string })
       {abierto && (
         <div className={`absolute bottom-20 ${posicionVentana} w-80 h-96 bg-white border border-gray-200 rounded-2xl shadow-2xl flex flex-col overflow-hidden animate-in fade-in slide-in-from-bottom-3 duration-200`}>
           <div 
-            className="text-white px-4 py-3 font-medium flex justify-between items-center text-sm"
+            className="text-white px-4 py-3 font-medium flex justify-between items-center text-sm transition-colors duration-300"
             style={{ backgroundColor: colorPrimario }}
           >
             <div className="flex items-center gap-2">
-              {avatarUrl && (
-                <img src={avatarUrl} alt="Avatar" className="w-6 h-6 rounded-full object-cover bg-white" />
-              )}
+              {renderAvatarContent(true)}
               <span>{nombreAsistente}</span>
             </div>
             <button 
@@ -164,7 +168,7 @@ export default function ChatWidget({ tiendaId }: { tiendaId?: number | string })
             <button
               type="submit"
               disabled={cargando}
-              className="text-white px-4 py-2 rounded-xl text-sm font-medium hover:opacity-90 disabled:opacity-50 cursor-pointer"
+              className="text-white px-4 py-2 rounded-xl text-sm font-medium hover:opacity-90 disabled:opacity-50 cursor-pointer transition-colors duration-300"
               style={{ backgroundColor: colorPrimario }}
             >
               Enviar
@@ -173,16 +177,14 @@ export default function ChatWidget({ tiendaId }: { tiendaId?: number | string })
         </div>
       )}
 
-      {/* BURBUJA DEL CHAT CON ICONO */}
+      {/* BURBUJA FLOTANTE DEL CHAT */}
       <button
         onClick={() => setAbierto(!abierto)}
-        className="text-white w-14 h-14 rounded-full shadow-2xl flex items-center justify-center text-2xl hover:scale-105 transition-transform cursor-pointer overflow-hidden"
+        className="text-white w-14 h-14 rounded-full shadow-2xl flex items-center justify-center hover:scale-105 transition-all duration-300 cursor-pointer overflow-hidden border-2 border-white/20"
         style={{ backgroundColor: colorPrimario }}
         aria-label="Abrir chat"
       >
-        {abierto ? '✕' : (
-          avatarUrl ? <img src={avatarUrl} alt="Chat Icon" className="w-full h-full object-cover" /> : '💬'
-        )}
+        {abierto ? '✕' : renderAvatarContent(false)}
       </button>
     </div>
   )

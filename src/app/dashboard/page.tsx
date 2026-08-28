@@ -202,38 +202,42 @@ supabase.removeChannel(channel);
 
 // Guardar configuración completa en la tabla 'tiendas'
 const guardarConfiguracion = async () => {
-  setGuardandoConfig(true)
+  setGuardandoConfig(true);
   try {
+    // Determinamos la URL final del avatar según lo que el usuario haya seleccionado en el panel
+    let avatarFinal = 'default';
+    if (avatarEstilo === 'custom') {
+      avatarFinal = avatarUrlCustom || 'default';
+    } else if (avatarEstilo === 'sparkle') {
+      avatarFinal = 'sparkle'; // O una URL de icono de chispa si prefieres
+    } else {
+      avatarFinal = 'moderno';
+    }
+
     const res = await fetch('/api/guardar-config', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        user_id: userId,
-        tiempos_envio: tiemposEnvio,
-        politicas,
-        faqs,
-        exit_intent: exitIntent,
-        cross_selling: recomendador, // <--- Cambiado para que coincida con la base de datos
-        modo_persuasivo: modoPersuasivo,
-        detector_idioma: detectorIdioma,
-        carrito_abandonado: carritoAbandonado,
-        analisis_sentimiento: analisisSentimiento,
-        cupones_flash: cuponesFlash,
-        plan: planCliente,
+        user_id: user_id, // O el ID de la tienda actual
         color_primario: colorPrimario,
         mensaje_bienvenida: mensajeBienvenida,
-        avatar_url: avatarEstilo,
-      })
-    })
-    const data = await res.json()
-    if (!res.ok) throw new Error(data.error || 'Error al guardar')
-    alert('¡Configuración guardada correctamente en Supabase!')
+        nombre_asistente: nombreAsistente,
+        posicion: posicionWidget,
+        avatar_url: avatarFinal, // <--- Aquí enviamos el avatar correctamente mapeado
+      }),
+    });
+
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Error al guardar');
+
+    alert('¡Cambios guardados y aplicados correctamente!');
   } catch (err: any) {
-    alert('Hubo un error: ' + err.message)
+    console.error('Error:', err);
+    alert('Hubo un error al guardar los cambios: ' + err.message);
   } finally {
-    setGuardandoConfig(false)
+    setGuardandoConfig(false);
   }
-}
+};
 
 // Estados y lógica de Analíticas
 const [rangoFechas, setRangoFechas] = useState('7d');
