@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useCallback } from 'react'
 
 type Mensaje = {
   rol: 'usuario' | 'bot'
@@ -22,51 +22,64 @@ export default function ChatWidget({ tiendaId }: { tiendaId?: number | string })
   const [cargando, setCargando] = useState(false)
   const finRef = useRef<HTMLDivElement>(null)
 
-  const obtenerTiendaIdReal = () => {
+  const obtenerTiendaIdReal = useCallback(() => {
     if (tiendaId) return tiendaId
     if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search)
+      const idParam = params.get('tiendaId') || params.get('user_id')
+      if (idParam) return idParam
+
       const paths = window.location.pathname.split('/')
       const posibleId = paths[paths.length - 1]
-      if (posibleId) return posibleId
+      if (posibleId && posibleId !== 'dashboard') return posibleId
     }
     return '1' 
-  }
+  }, [tiendaId])
 
   const idActual = obtenerTiendaIdReal()
 
-  // Sincronización en tiempo real con Supabase
-  useEffect(() => {
-    async function cargarConfiguracion() {
-      try {
-        const res = await fetch(`/api/obtener-config?tiendaId=${idActual}`)
-        if (!res.ok) return
-        const data = await res.json()
+  // Función para cargar la configuración evitando la caché de Vercel/Navegador
+  const cargarConfiguracion = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/obtener-config?tiendaId=${idActual}&t=${Date.now()}`, {
+        cache: 'no-store'
+      })
+      if (!res.ok) return
+      const data = await res.json()
 
-        if (data && !data.error) {
-          if (data.nombre_asistente) setNombreAsistente(data.nombre_asistente)
-          if (data.color_primario) setColorPrimario(data.color_primario)
-          if (data.avatar_url) setAvatarUrl(data.avatar_url)
-          
-          if (data.posicion) {
-            const posLimpia = data.posicion.toString().toLowerCase().trim()
-            setPosicion(posLimpia.includes('izq') ? 'izquierda' : 'derecha')
-          }
-          
-          // Actualizamos el mensaje de bienvenida solo la primera vez para no machacar el chat activo
-          if (data.mensaje_bienvenida && !inicializado) {
-            setMensajes([{ rol: 'bot', texto: data.mensaje_bienvenida }])
-            setInicializado(true)
-          }
+      if (data && !data.error) {
+        if (data.nombre_asistente) setNombreAsistente(data.nombre_asistente)
+        // Aplicamos el color directamente garantizando que si existe se use
+        if (data.color_primario) setColorPrimario(data.color_primario)
+        if (data.avatar_url) setAvatarUrl(data.avatar_url)
+        
+        if (data.posicion) {
+          const posLimpia = data.posicion.toString().toLowerCase().trim()
+          setPosicion(posLimpia.includes('izq') ? 'izquierda' : 'derecha')
         }
-      } catch (err) {
-        console.error('Error sincronizando widget:', err)
+        
+        if (data.mensaje_bienvenida && !inicializado) {
+          setMensajes([{ rol: 'bot', texto: data.mensaje_bienvenida }])
+          setInicializado(true)
+        }
       }
+    } catch (err) {
+      console.error('Error sincronizando widget:', err)
     }
-
-    cargarConfiguracion()
-    const intervalo = setInterval(cargarConfiguracion, 3000) // Revisa cambios cada 3 segundos
-    return () => clearInterval(intervalo)
   }, [idActual, inicializado])
+
+  useEffect(() => {
+    cargarConfiguracion()
+
+    // Escuchador de eventos por si el dashboard y el widget están en la misma sesión
+    const handleStorageUpdate = () => {
+      cargarConfiguracion()
+    }
+    window.addEventListener('configuracionActualizada', handleStorageUpdate)
+    return () => {
+      window.removeEventListener('configuracionActualizada', handleStorageUpdate)
+    }
+  }, [cargarConfiguracion])
 
   useEffect(() => {
     finRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -100,7 +113,6 @@ export default function ChatWidget({ tiendaId }: { tiendaId?: number | string })
     }
   }
 
-  // Renderizador inteligente del icono / avatar
   const renderAvatarContent = (esCabecera = false) => {
     if (avatarUrl.startsWith('http://') || avatarUrl.startsWith('https://')) {
       return <img src={avatarUrl} alt="Avatar" className={`${esCabecera ? 'w-6 h-6' : 'w-full h-full'} rounded-full object-cover bg-white`} />
@@ -177,9 +189,11 @@ export default function ChatWidget({ tiendaId }: { tiendaId?: number | string })
         </div>
       )}
 
-      {/* BURBUJA FLOTANTE DEL CHAT */}
       <button
-        onClick={() => setAbierto(!abierto)}
+        onClick={() => {
+          setAbierto(!abierto)
+          if (!abierto) cargarConfiguracion() // Vuelve a comprobar cambios cada vez que el usuario abre el chat
+        }}
         className="text-white w-14 h-14 rounded-full shadow-2xl flex items-center justify-center hover:scale-105 transition-all duration-300 cursor-pointer overflow-hidden border-2 border-white/20"
         style={{ backgroundColor: colorPrimario }}
         aria-label="Abrir chat"

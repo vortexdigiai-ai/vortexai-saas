@@ -217,7 +217,7 @@ const guardarConfiguracion = async () => {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        user_id: userId, // <--- Aquí usamos la variable correcta de tu dashboard (userId)
+        user_id: userId,
         color_primario: colorPrimario,
         mensaje_bienvenida: mensajeBienvenida,
         nombre_asistente: nombreAsistente,
@@ -229,6 +229,11 @@ const guardarConfiguracion = async () => {
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Error al guardar');
 
+    // ESTO FORZA A QUE CUALQUIER WIDGET ABIERTO SE ACTUALICE AL INSTANTE
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new Event('configuracionActualizada'));
+    }
+
     alert('¡Cambios guardados y aplicados correctamente!');
   } catch (err: any) {
     console.error('Error:', err);
@@ -237,7 +242,6 @@ const guardarConfiguracion = async () => {
     setGuardandoConfig(false);
   }
 };
-
 // Estados y lógica de Analíticas
 const [rangoFechas, setRangoFechas] = useState('7d');
 const [metricasReales, setMetricasReales] = useState({
