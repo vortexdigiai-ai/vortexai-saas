@@ -19,6 +19,7 @@ export default function ChatWidget({ tiendaId }: { tiendaId: number }) {
   const [cargando, setCargando] = useState(false)
   const finRef = useRef<HTMLDivElement>(null)
 
+  // Función para consultar la configuración a Supabase
   useEffect(() => {
     async function cargarConfiguracion() {
       try {
@@ -28,14 +29,12 @@ export default function ChatWidget({ tiendaId }: { tiendaId: number }) {
 
         if (data) {
           if (data.nombre_asistente) setNombreAsistente(data.nombre_asistente)
-          if (data.mensaje_bienvenida) {
+          if (data.mensaje_bienvenida && mensajes.length <= 1) {
             setMensajeBienvenida(data.mensaje_bienvenida)
             setMensajes([{ rol: 'bot', texto: data.mensaje_bienvenida }])
-          } else {
-            setMensajes([{ rol: 'bot', texto: '¡Hola! ¿En qué puedo ayudarte hoy?' }])
           }
           if (data.color_primario) setColorPrimario(data.color_primario)
-          // Forzamos minúsculas por seguridad para comparar
+          
           if (data.posicion) {
             const posLimpia = data.posicion.toString().toLowerCase().trim()
             if (posLimpia === 'izquierda' || posLimpia === 'left') {
@@ -46,16 +45,18 @@ export default function ChatWidget({ tiendaId }: { tiendaId: number }) {
           }
         }
       } catch (err) {
-        console.error('Error cargando configuración:', err)
-        setMensajes([{ rol: 'bot', texto: '¡Hola! ¿En qué puedo ayudarte hoy?' }])
+        console.error('Error sincronizando widget:', err)
       }
     }
 
-    if (tiendaId) {
-      cargarConfiguracion()
-    } else {
-      setMensajes([{ rol: 'bot', texto: '¡Hola! ¿En qué puedo ayudarte hoy?' }])
-    }
+    if (!tiendaId) return
+
+    // Carga inicial
+    cargarConfiguracion()
+
+    // Sincronización en tiempo real cada 3 segundos sin recargar la página
+    const intervalo = setInterval(cargarConfiguracion, 3000)
+    return () => clearInterval(intervalo)
   }, [tiendaId])
 
   useEffect(() => {
@@ -93,7 +94,7 @@ export default function ChatWidget({ tiendaId }: { tiendaId: number }) {
     }
   }
 
-  // Clases dinámicas según la posición seleccionada en el panel
+  // Clases dinámicas exactas según la posición (izquierda o derecha)
   const posicionContenedor = posicion === 'izquierda' ? 'fixed bottom-6 left-6' : 'fixed bottom-6 right-6'
   const posicionVentana = posicion === 'izquierda' ? 'left-0' : 'right-0'
 
