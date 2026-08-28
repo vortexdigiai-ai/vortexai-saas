@@ -7,54 +7,71 @@ type Mensaje = {
   texto: string
 }
 
-export default function ChatWidget({ tiendaId }: { tiendaId: number }) {
+export default function ChatWidget({ tiendaId }: { tiendaId?: number | string }) {
   const [abierto, setAbierto] = useState(false)
-  const [nombreAsistente, setNombreAsistente] = useState('Asistente de la tienda')
-  const [colorPrimario, setColorPrimario] = useState('#000000')
+  const [nombreAsistente, setNombreAsistente] = useState('Asistente Virtual IA')
+  const [colorPrimario, setColorPrimario] = useState('#f43f5e') // Color rosa por defecto si falla
   const [posicion, setPosicion] = useState<'derecha' | 'izquierda'>('derecha')
+  const [avatarUrl, setAvatarUrl] = useState('')
+  const [bienvenidaCargada, setBienvenidaCargada] = useState(false)
 
   const [mensajes, setMensajes] = useState<Mensaje[]>([
-    { rol: 'bot', texto: '¡Hola! ¿En qué puedo ayudarte hoy?' }
+    { rol: 'bot', texto: '¡Hola! ¿Cómo puedo ayudarte hoy?' }
   ])
   const [input, setInput] = useState('')
   const [cargando, setCargando] = useState(false)
   const finRef = useRef<HTMLDivElement>(null)
 
-  // Cargar configuración de la tienda una sola vez al montar el componente
+  // Obtener el ID
+  const obtenerTiendaIdReal = () => {
+    if (tiendaId) return tiendaId
+    if (typeof window !== 'undefined') {
+      const paths = window.location.pathname.split('/')
+      const posibleId = paths[paths.length - 1]
+      if (posibleId) return posibleId
+    }
+    return '1' 
+  }
+
+  const idActual = obtenerTiendaIdReal()
+
+  // Carga y sincronización en tiempo real
   useEffect(() => {
     async function cargarConfiguracion() {
       try {
-        if (!tiendaId) return
-        const res = await fetch(`/api/obtener-config?tiendaId=${tiendaId}`)
-        if (!res.ok) return
+        const res = await fetch(`/api/obtener-config?tiendaId=${idActual}`)
+        if (!res.ok) {
+          console.error('Error al contactar con la API de configuración')
+          return
+        }
+        
         const data = await res.json()
+        console.log('Datos recibidos en el widget:', data) // PARA DEPURAR
 
-        if (data) {
-          if (data.nombre_asistente) {
-            setNombreAsistente(data.nombre_asistente)
-          }
-          if (data.mensaje_bienvenida) {
-            setMensajes([{ rol: 'bot', texto: data.mensaje_bienvenida }])
-          }
-          if (data.color_primario) {
-            setColorPrimario(data.color_primario)
-          }
+        if (data && !data.error) {
+          if (data.nombre_asistente) setNombreAsistente(data.nombre_asistente)
+          if (data.color_primario) setColorPrimario(data.color_primario)
+          if (data.avatar_url && data.avatar_url !== 'default') setAvatarUrl(data.avatar_url)
+          
           if (data.posicion) {
-            const posLimpia = data.posicion.toString().toLowerCase().trim()
-            if (posLimpia === 'izquierda' || posLimpia === 'left') {
-              setPosicion('izquierda')
-            } else {
-              setPosicion('derecha')
-            }
+            setPosicion(data.posicion.toString().toLowerCase().includes('izq') ? 'izquierda' : 'derecha')
+          }
+          
+          // Solo actualiza la bienvenida si no se ha cargado ya
+          if (data.mensaje_bienvenida && !bienvenidaCargada) {
+            setMensajes([{ rol: 'bot', texto: data.mensaje_bienvenida }])
+            setBienvenidaCargada(true)
           }
         }
       } catch (err) {
-        console.error('Error cargando configuración:', err)
+        console.error('Error de red cargando configuración:', err)
       }
     }
 
     cargarConfiguracion()
-  }, [tiendaId])
+    const intervalo = setInterval(cargarConfiguracion, 4000) // Sincroniza cada 4s
+    return () => clearInterval(intervalo)
+  }, [idActual, bienvenidaCargada])
 
   useEffect(() => {
     finRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -73,19 +90,16 @@ export default function ChatWidget({ tiendaId }: { tiendaId: number }) {
       const res = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ mensaje: mensajeUsuario, tiendaId }),
+        body: JSON.stringify({ mensaje: mensajeUsuario, tiendaId: idActual }),
       })
       const data = await res.json()
 
       setMensajes((prev) => [
         ...prev,
-        { rol: 'bot', texto: data.respuesta || 'Lo siento, ha ocurrido un error.' },
+        { rol: 'bot', texto: data.respuesta || data.error || 'Lo siento, ha ocurrido un error.' },
       ])
     } catch {
-      setMensajes((prev) => [
-        ...prev,
-        { rol: 'bot', texto: 'Lo siento, ha ocurrido un error de conexión.' },
-      ])
+      setMensajes((prev) => [...prev, { rol: 'bot', texto: 'Lo siento, ha ocurrido un error de conexión.' }])
     } finally {
       setCargando(false)
     }
@@ -102,7 +116,12 @@ export default function ChatWidget({ tiendaId }: { tiendaId: number }) {
             className="text-white px-4 py-3 font-medium flex justify-between items-center text-sm"
             style={{ backgroundColor: colorPrimario }}
           >
-            <span>{nombreAsistente}</span>
+            <div className="flex items-center gap-2">
+              {avatarUrl && (
+                <img src={avatarUrl} alt="Avatar" className="w-6 h-6 rounded-full object-cover bg-white" />
+              )}
+              <span>{nombreAsistente}</span>
+            </div>
             <button 
               onClick={() => setAbierto(false)}
               className="text-white/80 hover:text-white text-base font-bold cursor-pointer"
@@ -154,13 +173,16 @@ export default function ChatWidget({ tiendaId }: { tiendaId: number }) {
         </div>
       )}
 
+      {/* BURBUJA DEL CHAT CON ICONO */}
       <button
         onClick={() => setAbierto(!abierto)}
-        className="text-white w-14 h-14 rounded-full shadow-2xl flex items-center justify-center text-2xl hover:scale-105 transition-transform cursor-pointer"
+        className="text-white w-14 h-14 rounded-full shadow-2xl flex items-center justify-center text-2xl hover:scale-105 transition-transform cursor-pointer overflow-hidden"
         style={{ backgroundColor: colorPrimario }}
         aria-label="Abrir chat"
       >
-        {abierto ? '✕' : '💬'}
+        {abierto ? '✕' : (
+          avatarUrl ? <img src={avatarUrl} alt="Chat Icon" className="w-full h-full object-cover" /> : '💬'
+        )}
       </button>
     </div>
   )
