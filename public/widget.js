@@ -27,15 +27,10 @@
   iframe.style.zIndex = '999999';
 
   iframe.style.background = 'transparent';
-
-  iframe.style.pointerEvents = 'none';
+  iframe.style.backgroundColor = 'transparent';
 
   iframe.setAttribute('allowtransparency', 'true');
-
-  iframe.setAttribute(
-    'title',
-    'VortexAI Chatbot'
-  );
+  iframe.setAttribute('title', 'VortexAI Chatbot');
 
   document.body.appendChild(iframe);
 })();
