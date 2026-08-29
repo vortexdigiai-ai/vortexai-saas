@@ -8,8 +8,19 @@ export default async function Page({
   const { tiendaId } = await params
 
   return (
-    <div className="bg-transparent w-screen h-screen overflow-hidden pointer-events-none">
-      <ChatWidget tiendaId={Number(tiendaId)} />
+    <div
+      style={{
+        position: 'fixed',
+        inset: 0,
+        width: '100vw',
+        height: '100vh',
+        pointerEvents: 'none',
+        background: 'transparent',
+        overflow: 'visible',
+        zIndex: 999999,
+      }}
+    >
+      <ChatWidget tiendaId={tiendaId} />
     </div>
   )
 }
