@@ -25,8 +25,9 @@ export async function GET(req: Request) {
     const { data, error } = await supabase
       .from('tiendas')
       .select(
-        'user_id, color_primario, mensaje_bienvenida, nombre_asistente, posicion, avatar_url'
-      )
+  'user_id, color_primario, mensaje_bienvenida, nombre_asistente, posicion, avatar_url, exit_intent'
+)
+      
       .eq('user_id', tiendaId)
       .maybeSingle();
 
