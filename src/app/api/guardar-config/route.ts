@@ -16,13 +16,69 @@ export async function POST(req: Request) {
     }
 
     const updateData: Record<string, any> = {
-      user_id: user_id,
-      color_primario: body.color_primario || body.colorPrimario || '#4400ff',
-      mensaje_bienvenida: body.mensaje_bienvenida || body.mensajeBienvenida || '¡Hola!',
-      nombre_asistente: body.nombre_asistente || body.nombreAsistente || 'Asistente',
-      posicion: body.posicion || 'derecha',
-      avatar_url: body.avatar_url || body.avatarUrl || 'moderno'
-    };
+  user_id: user_id,
+
+  // PERSONALIZACIÓN
+  color_primario:
+    body.color_primario ||
+    body.colorPrimario ||
+    '#4400ff',
+
+  mensaje_bienvenida:
+    body.mensaje_bienvenida ||
+    body.mensajeBienvenida ||
+    '¡Hola!',
+
+  nombre_asistente:
+    body.nombre_asistente ||
+    body.nombreAsistente ||
+    'Asistente',
+
+  posicion:
+    body.posicion ||
+    'derecha',
+
+  avatar_url:
+    body.avatar_url ||
+    body.avatarUrl ||
+    'moderno',
+
+  // FUNCIONES IA
+  detector_idioma:
+    typeof body.detector_idioma === 'boolean'
+      ? body.detector_idioma
+      : true,
+
+  exit_intent:
+    typeof body.exit_intent === 'boolean'
+      ? body.exit_intent
+      : false,
+
+  cross_selling:
+    typeof body.cross_selling === 'boolean'
+      ? body.cross_selling
+      : true,
+
+  modo_persuasivo:
+    typeof body.modo_persuasivo === 'boolean'
+      ? body.modo_persuasivo
+      : false,
+
+  carrito_abandonado:
+    typeof body.carrito_abandonado === 'boolean'
+      ? body.carrito_abandonado
+      : false,
+
+  analisis_sentimiento:
+    typeof body.analisis_sentimiento === 'boolean'
+      ? body.analisis_sentimiento
+      : false,
+
+  cupones_flash:
+    typeof body.cupones_flash === 'boolean'
+      ? body.cupones_flash
+      : false,
+};
 
     // Comprobamos si ya existe el registro en la tabla 'tiendas'
     const { data: existente } = await supabase

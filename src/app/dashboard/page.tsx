@@ -203,8 +203,10 @@ supabase.removeChannel(channel);
 // Guardar configuración completa en la tabla 'tiendas'
 const guardarConfiguracion = async () => {
   setGuardandoConfig(true);
+
   try {
     let avatarFinal = 'default';
+
     if (avatarEstilo === 'custom') {
       avatarFinal = avatarUrlCustom || 'default';
     } else if (avatarEstilo === 'sparkle') {
@@ -215,29 +217,52 @@ const guardarConfiguracion = async () => {
 
     const res = await fetch('/api/guardar-config', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+      },
       body: JSON.stringify({
         user_id: userId,
+
+        // PERSONALIZACIÓN
         color_primario: colorPrimario,
         mensaje_bienvenida: mensajeBienvenida,
         nombre_asistente: nombreAsistente,
         posicion: posicionWidget,
         avatar_url: avatarFinal,
+
+        // FUNCIONES IA
+        detector_idioma: detectorIdioma,
+        exit_intent: exitIntent,
+        cross_selling: recomendador,
+        modo_persuasivo: modoPersuasivo,
+        carrito_abandonado: carritoAbandonado,
+        analisis_sentimiento: analisisSentimiento,
+        cupones_flash: cuponesFlash,
       }),
     });
 
     const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Error al guardar');
 
-    // ESTO FORZA A QUE CUALQUIER WIDGET ABIERTO SE ACTUALICE AL INSTANTE
+    if (!res.ok) {
+      throw new Error(data.error || 'Error al guardar');
+    }
+
     if (typeof window !== 'undefined') {
-      window.dispatchEvent(new Event('configuracionActualizada'));
+      window.dispatchEvent(
+        new Event('configuracionActualizada')
+      );
     }
 
     alert('¡Cambios guardados y aplicados correctamente!');
+
   } catch (err: any) {
     console.error('Error:', err);
-    alert('Hubo un error al guardar los cambios: ' + err.message);
+
+    alert(
+      'Hubo un error al guardar los cambios: ' +
+      err.message
+    );
+
   } finally {
     setGuardandoConfig(false);
   }
