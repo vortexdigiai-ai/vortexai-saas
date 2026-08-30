@@ -8,6 +8,27 @@ const supabase = createClient(
 );
 
 // ============================================================
+// CORS
+// ============================================================
+
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'POST, DELETE, OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type',
+};
+
+// ============================================================
+// PREFLIGHT CORS
+// ============================================================
+
+export async function OPTIONS() {
+  return new NextResponse(null, {
+    status: 204,
+    headers: corsHeaders,
+  });
+}
+
+// ============================================================
 // POST
 // RECIBIR / ACTUALIZAR CARRITO
 // ============================================================
@@ -37,10 +58,11 @@ export async function POST(req: Request) {
     if (!tiendaId) {
       return NextResponse.json(
         {
-          error: 'Falta el identificador de la tienda'
+          error: 'Falta el identificador de la tienda',
         },
         {
-          status: 400
+          status: 400,
+          headers: corsHeaders,
         }
       );
     }
@@ -48,10 +70,11 @@ export async function POST(req: Request) {
     if (!visitorId) {
       return NextResponse.json(
         {
-          error: 'Falta el identificador del visitante'
+          error: 'Falta el identificador del visitante',
         },
         {
-          status: 400
+          status: 400,
+          headers: corsHeaders,
         }
       );
     }
@@ -59,10 +82,11 @@ export async function POST(req: Request) {
     if (!cart || typeof cart !== 'object') {
       return NextResponse.json(
         {
-          error: 'Los datos del carrito no son válidos'
+          error: 'Los datos del carrito no son válidos',
         },
         {
-          status: 400
+          status: 400,
+          headers: corsHeaders,
         }
       );
     }
@@ -85,10 +109,11 @@ export async function POST(req: Request) {
 
       return NextResponse.json(
         {
-          error: tiendaError.message
+          error: tiendaError.message,
         },
         {
-          status: 500
+          status: 500,
+          headers: corsHeaders,
         }
       );
     }
@@ -96,10 +121,11 @@ export async function POST(req: Request) {
     if (!tienda) {
       return NextResponse.json(
         {
-          error: 'La tienda no existe'
+          error: 'La tienda no existe',
         },
         {
-          status: 404
+          status: 404,
+          headers: corsHeaders,
         }
       );
     }
@@ -113,10 +139,12 @@ export async function POST(req: Request) {
         {
           success: true,
           enabled: false,
-          message: 'La función de carrito abandonado está desactivada'
+          message:
+            'La función de carrito abandonado está desactivada',
         },
         {
-          status: 200
+          status: 200,
+          headers: corsHeaders,
         }
       );
     }
@@ -141,14 +169,14 @@ export async function POST(req: Request) {
       total = items.reduce((sum: number, item: any) => {
         const precio = Number(
           item.precio ??
-          item.price ??
-          0
+            item.price ??
+            0
         );
 
         const cantidad = Number(
           item.cantidad ??
-          item.quantity ??
-          1
+            item.quantity ??
+            1
         );
 
         return sum + precio * cantidad;
@@ -177,12 +205,13 @@ export async function POST(req: Request) {
     // BUSCAR CARRITO EXISTENTE
     // ----------------------------------------------------------
 
-    const { data: existente, error: buscarError } = await supabase
-      .from('carritos')
-      .select('id, estado')
-      .eq('tienda_id', tiendaId)
-      .eq('visitor_id', visitorId)
-      .maybeSingle();
+    const { data: existente, error: buscarError } =
+      await supabase
+        .from('carritos')
+        .select('id, estado')
+        .eq('tienda_id', tiendaId)
+        .eq('visitor_id', visitorId)
+        .maybeSingle();
 
     if (buscarError) {
       console.error(
@@ -192,10 +221,11 @@ export async function POST(req: Request) {
 
       return NextResponse.json(
         {
-          error: buscarError.message
+          error: buscarError.message,
         },
         {
-          status: 500
+          status: 500,
+          headers: corsHeaders,
         }
       );
     }
@@ -214,7 +244,7 @@ export async function POST(req: Request) {
       estado: 'activo',
       updated_at: new Date().toISOString(),
       abandoned_at: null,
-      recovered_at: null
+      recovered_at: null,
     };
 
     // ----------------------------------------------------------
@@ -222,7 +252,6 @@ export async function POST(req: Request) {
     // ----------------------------------------------------------
 
     if (existente) {
-
       const { error: updateError } = await supabase
         .from('carritos')
         .update(carritoData)
@@ -236,10 +265,11 @@ export async function POST(req: Request) {
 
         return NextResponse.json(
           {
-            error: updateError.message
+            error: updateError.message,
           },
           {
-            status: 500
+            status: 500,
+            headers: corsHeaders,
           }
         );
       }
@@ -248,10 +278,11 @@ export async function POST(req: Request) {
         {
           success: true,
           action: 'updated',
-          visitorId: visitorId
+          visitorId: visitorId,
         },
         {
-          status: 200
+          status: 200,
+          headers: corsHeaders,
         }
       );
     }
@@ -272,10 +303,11 @@ export async function POST(req: Request) {
 
       return NextResponse.json(
         {
-          error: insertError.message
+          error: insertError.message,
         },
         {
-          status: 500
+          status: 500,
+          headers: corsHeaders,
         }
       );
     }
@@ -284,15 +316,15 @@ export async function POST(req: Request) {
       {
         success: true,
         action: 'created',
-        visitorId: visitorId
+        visitorId: visitorId,
       },
       {
-        status: 201
+        status: 201,
+        headers: corsHeaders,
       }
     );
 
   } catch (error: any) {
-
     console.error(
       'VortexAI: error interno en /api/carrito:',
       error
@@ -302,10 +334,11 @@ export async function POST(req: Request) {
       {
         error:
           error?.message ||
-          'Error interno del servidor'
+          'Error interno del servidor',
       },
       {
-        status: 500
+        status: 500,
+        headers: corsHeaders,
       }
     );
   }
@@ -332,10 +365,11 @@ export async function DELETE(req: Request) {
     if (!tiendaId || !visitorId) {
       return NextResponse.json(
         {
-          error: 'Faltan datos del carrito'
+          error: 'Faltan datos del carrito',
         },
         {
-          status: 400
+          status: 400,
+          headers: corsHeaders,
         }
       );
     }
@@ -347,7 +381,7 @@ export async function DELETE(req: Request) {
         total: 0,
         estado: 'recuperado',
         recovered_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
+        updated_at: new Date().toISOString(),
       })
       .eq('tienda_id', tiendaId)
       .eq('visitor_id', visitorId);
@@ -360,25 +394,26 @@ export async function DELETE(req: Request) {
 
       return NextResponse.json(
         {
-          error: error.message
+          error: error.message,
         },
         {
-          status: 500
+          status: 500,
+          headers: corsHeaders,
         }
       );
     }
 
     return NextResponse.json(
       {
-        success: true
+        success: true,
       },
       {
-        status: 200
+        status: 200,
+        headers: corsHeaders,
       }
     );
 
   } catch (error: any) {
-
     console.error(
       'VortexAI: error interno recuperando carrito:',
       error
@@ -388,10 +423,11 @@ export async function DELETE(req: Request) {
       {
         error:
           error?.message ||
-          'Error interno del servidor'
+          'Error interno del servidor',
       },
       {
-        status: 500
+        status: 500,
+        headers: corsHeaders,
       }
     );
   }
