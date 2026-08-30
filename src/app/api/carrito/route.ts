@@ -241,7 +241,7 @@ export async function POST(req: Request) {
       total: total,
       currency: currency,
       cart_url: cartUrl,
-      estado: 'activo',
+      estado: 'active',
       updated_at: new Date().toISOString(),
       abandoned_at: null,
       recovered_at: null,
