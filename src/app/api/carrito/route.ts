@@ -379,7 +379,7 @@ export async function DELETE(req: Request) {
       .update({
         items: [],
         total: 0,
-        estado: 'recuperado',
+        estado: 'recovered',
         recovered_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       })

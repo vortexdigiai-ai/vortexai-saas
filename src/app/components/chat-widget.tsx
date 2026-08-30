@@ -14,117 +14,202 @@ export default function ChatWidget({ tiendaId }: { tiendaId?: number | string })
   const [posicion, setPosicion] = useState<'derecha' | 'izquierda'>('derecha')
   const [avatarUrl, setAvatarUrl] = useState('default')
 
-  // NUEVO: controla si Exit Intent está activado
+  // ============================================================
+  // VISITOR ID
+  // ============================================================
+
+  const [visitorId, setVisitorId] = useState<string | null>(null)
+
+  // ============================================================
+  // EXIT INTENT
+  // ============================================================
+
   const [exitIntent, setExitIntent] = useState(false)
 
-  // NUEVO: evita que Exit Intent se dispare varias veces
   const exitIntentDisparado = useRef(false)
 
+  // ============================================================
+  // MENSAJES
+  // ============================================================
+
   const [mensajes, setMensajes] = useState<Mensaje[]>([
-    { rol: 'bot', texto: '¡Hola! ¿Cómo puedo ayudarte hoy?' }
+    {
+      rol: 'bot',
+      texto: '¡Hola! ¿Cómo puedo ayudarte hoy?'
+    }
   ])
 
   const [input, setInput] = useState('')
   const [cargando, setCargando] = useState(false)
+
   const finRef = useRef<HTMLDivElement>(null)
 
+  // ============================================================
+  // OBTENER ID REAL DE LA TIENDA
+  // ============================================================
+
   const obtenerTiendaIdReal = useCallback(() => {
-    if (tiendaId) return tiendaId
+
+    if (tiendaId) {
+      return tiendaId
+    }
 
     if (typeof window !== 'undefined') {
-      const params = new URLSearchParams(window.location.search)
-      const idParam = params.get('tiendaId') || params.get('user_id')
 
-      if (idParam) return idParam
+      const params = new URLSearchParams(
+        window.location.search
+      )
 
-      const paths = window.location.pathname.split('/')
-      const posibleId = paths[paths.length - 1]
+      const idParam =
+        params.get('tiendaId') ||
+        params.get('user_id')
 
-      if (posibleId && posibleId !== 'dashboard') {
+      if (idParam) {
+        return idParam
+      }
+
+      const paths =
+        window.location.pathname.split('/')
+
+      const posibleId =
+        paths[paths.length - 1]
+
+      if (
+        posibleId &&
+        posibleId !== 'dashboard'
+      ) {
         return posibleId
       }
     }
 
     return '1'
+
   }, [tiendaId])
 
   const idActual = obtenerTiendaIdReal()
 
-  // Cargar configuración de la tienda
+  // ============================================================
+  // CARGAR CONFIGURACIÓN DE LA TIENDA
+  // ============================================================
+
   const cargarConfiguracion = useCallback(async () => {
+
     try {
+
       const res = await fetch(
-        `/api/obtener-config?tiendaId=${encodeURIComponent(String(idActual))}&t=${Date.now()}`,
+        `/api/obtener-config?tiendaId=${encodeURIComponent(
+          String(idActual)
+        )}&t=${Date.now()}`,
         {
           cache: 'no-store',
         }
       )
 
       if (!res.ok) {
+
         console.error(
           'Error obteniendo configuración:',
           res.status,
           res.statusText
         )
+
         return
       }
 
       const data = await res.json()
 
-      console.log('Configuración recibida por el widget:', data)
+      console.log(
+        'Configuración recibida por el widget:',
+        data
+      )
 
       if (data && !data.error) {
 
         if (data.nombre_asistente) {
-          setNombreAsistente(data.nombre_asistente)
+
+          setNombreAsistente(
+            data.nombre_asistente
+          )
+
         }
 
         if (data.color_primario) {
-          setColorPrimario(data.color_primario)
+
+          setColorPrimario(
+            data.color_primario
+          )
+
         }
 
         if (data.avatar_url) {
-          setAvatarUrl(data.avatar_url)
+
+          setAvatarUrl(
+            data.avatar_url
+          )
+
         }
 
         if (data.posicion) {
-          const posLimpia = data.posicion
-            .toString()
-            .toLowerCase()
-            .trim()
+
+          const posLimpia =
+            data.posicion
+              .toString()
+              .toLowerCase()
+              .trim()
 
           setPosicion(
             posLimpia.includes('izq')
               ? 'izquierda'
               : 'derecha'
           )
+
         }
 
-        // NUEVO: cargar Exit Intent desde Supabase
-        setExitIntent(data.exit_intent === true)
+        // ======================================================
+        // EXIT INTENT
+        // ======================================================
+
+        setExitIntent(
+          data.exit_intent === true
+        )
+
+        // ======================================================
+        // MENSAJE DE BIENVENIDA
+        // ======================================================
 
         if (data.mensaje_bienvenida) {
+
           setMensajes([
             {
               rol: 'bot',
-              texto: data.mensaje_bienvenida,
+              texto:
+                data.mensaje_bienvenida,
             },
           ])
+
         }
+
       }
+
     } catch (err) {
+
       console.error(
         'Error sincronizando configuración del widget:',
         err
       )
+
     }
+
   }, [idActual])
 
+  // ============================================================
+  // INICIALIZAR CONFIGURACIÓN
+  // ============================================================
+
   useEffect(() => {
+
     cargarConfiguracion()
 
-    // Escuchador de eventos por si el dashboard y el widget
-    // están en la misma sesión
     const handleStorageUpdate = () => {
       cargarConfiguracion()
     }
@@ -135,34 +220,112 @@ export default function ChatWidget({ tiendaId }: { tiendaId?: number | string })
     )
 
     return () => {
+
       window.removeEventListener(
         'configuracionActualizada',
         handleStorageUpdate
       )
+
     }
+
   }, [cargarConfiguracion])
+
+  // ============================================================
+  // RECIBIR VISITOR ID DESDE widget.js
+  // ============================================================
+
+  useEffect(() => {
+
+    const recibirVisitorId = (
+      event: MessageEvent
+    ) => {
+
+      if (
+        !event.data ||
+        typeof event.data !== 'object'
+      ) {
+        return
+      }
+
+      if (
+        event.data.type !==
+        'VORTEXAI_VISITOR'
+      ) {
+        return
+      }
+
+      if (!event.data.visitorId) {
+        return
+      }
+
+      setVisitorId(
+        event.data.visitorId
+      )
+
+      console.log(
+        'VortexAI: visitorId recibido:',
+        event.data.visitorId
+      )
+
+    }
+
+    window.addEventListener(
+      'message',
+      recibirVisitorId
+    )
+
+    // ========================================================
+    // AVISAR A widget.js DE QUE EL IFRAME ESTÁ LISTO
+    // ========================================================
+
+    window.parent.postMessage(
+      {
+        type:
+          'VORTEXAI_WIDGET_READY'
+      },
+      '*'
+    )
+
+    return () => {
+
+      window.removeEventListener(
+        'message',
+        recibirVisitorId
+      )
+
+    }
+
+  }, [])
 
   // ============================================================
   // EXIT INTENT
   // ============================================================
+
   useEffect(() => {
-    if (!exitIntent) return
 
-    const detectarExitIntent = (event: MouseEvent) => {
+    if (!exitIntent) {
+      return
+    }
 
-      // Si ya se ha disparado, no volvemos a abrirlo
-      if (exitIntentDisparado.current) return
+    const detectarExitIntent = (
+      event: MouseEvent
+    ) => {
 
-      // Solo detectamos cuando el cursor se acerca
-      // a la parte superior de la ventana
+      if (
+        exitIntentDisparado.current
+      ) {
+        return
+      }
+
       if (event.clientY <= 10) {
 
-        // Marcamos que ya se ha utilizado
-        exitIntentDisparado.current = true
+        exitIntentDisparado.current =
+          true
 
-        // Abrimos el chatbot
         setAbierto(true)
+
       }
+
     }
 
     document.addEventListener(
@@ -171,26 +334,44 @@ export default function ChatWidget({ tiendaId }: { tiendaId?: number | string })
     )
 
     return () => {
+
       document.removeEventListener(
         'mousemove',
         detectarExitIntent
       )
+
     }
+
   }, [exitIntent])
 
-  // Scroll automático al último mensaje
+  // ============================================================
+  // SCROLL AUTOMÁTICO
+  // ============================================================
+
   useEffect(() => {
+
     finRef.current?.scrollIntoView({
       behavior: 'smooth'
     })
+
   }, [mensajes, abierto])
 
-  async function enviarMensaje(e: React.FormEvent) {
+  // ============================================================
+  // ENVIAR MENSAJE
+  // ============================================================
+
+  async function enviarMensaje(
+    e: React.FormEvent
+  ) {
+
     e.preventDefault()
 
-    if (!input.trim()) return
+    if (!input.trim()) {
+      return
+    }
 
-    const mensajeUsuario = input
+    const mensajeUsuario =
+      input
 
     setMensajes((prev) => [
       ...prev,
@@ -204,18 +385,35 @@ export default function ChatWidget({ tiendaId }: { tiendaId?: number | string })
     setCargando(true)
 
     try {
-      const res = await fetch('/api/chat', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          mensaje: mensajeUsuario,
-          tiendaId: idActual
-        }),
-      })
 
-      const data = await res.json()
+      const res = await fetch(
+        '/api/chat',
+        {
+          method: 'POST',
+
+          headers: {
+            'Content-Type':
+              'application/json'
+          },
+
+          body: JSON.stringify({
+            mensaje:
+              mensajeUsuario,
+
+            tiendaId:
+              idActual,
+
+            // NUEVO:
+            // enviamos el visitante
+            // identificado por widget.js
+            visitorId:
+              visitorId
+          }),
+        }
+      )
+
+      const data =
+        await res.json()
 
       setMensajes((prev) => [
         ...prev,
@@ -227,7 +425,9 @@ export default function ChatWidget({ tiendaId }: { tiendaId?: number | string })
             'Lo siento, ha ocurrido un error.'
         },
       ])
+
     } catch {
+
       setMensajes((prev) => [
         ...prev,
         {
@@ -236,17 +436,28 @@ export default function ChatWidget({ tiendaId }: { tiendaId?: number | string })
             'Lo siento, ha ocurrido un error de conexión.'
         }
       ])
+
     } finally {
+
       setCargando(false)
+
     }
+
   }
 
-  const renderAvatarContent = (esCabecera = false) => {
+  // ============================================================
+  // AVATAR
+  // ============================================================
+
+  const renderAvatarContent = (
+    esCabecera = false
+  ) => {
 
     if (
       avatarUrl.startsWith('http://') ||
       avatarUrl.startsWith('https://')
     ) {
+
       return (
         <img
           src={avatarUrl}
@@ -258,9 +469,11 @@ export default function ChatWidget({ tiendaId }: { tiendaId?: number | string })
           } rounded-full object-cover bg-white`}
         />
       )
+
     }
 
     if (avatarUrl === 'sparkle') {
+
       return (
         <span
           className={
@@ -272,6 +485,7 @@ export default function ChatWidget({ tiendaId }: { tiendaId?: number | string })
           ✨
         </span>
       )
+
     }
 
     return (
@@ -285,7 +499,12 @@ export default function ChatWidget({ tiendaId }: { tiendaId?: number | string })
         🤖
       </span>
     )
+
   }
+
+  // ============================================================
+  // POSICIÓN
+  // ============================================================
 
   const posicionContenedor =
     posicion === 'izquierda'
@@ -297,21 +516,30 @@ export default function ChatWidget({ tiendaId }: { tiendaId?: number | string })
       ? 'left-0'
       : 'right-0'
 
+  // ============================================================
+  // INTERFAZ
+  // ============================================================
+
   return (
     <div
       className={`${posicionContenedor} z-[999999] pointer-events-auto bg-transparent`}
     >
 
       {abierto && (
+
         <div
           className={`absolute bottom-20 ${posicionVentana} w-80 h-96 bg-white border border-gray-200 rounded-2xl shadow-2xl flex flex-col overflow-hidden animate-in fade-in slide-in-from-bottom-3 duration-200`}
         >
 
-          {/* CABECERA */}
+          {/* ==================================================
+              CABECERA
+          ================================================== */}
+
           <div
             className="text-white px-4 py-3 font-medium flex justify-between items-center text-sm transition-colors duration-300"
             style={{
-              backgroundColor: colorPrimario
+              backgroundColor:
+                colorPrimario
             }}
           >
 
@@ -326,7 +554,9 @@ export default function ChatWidget({ tiendaId }: { tiendaId?: number | string })
             </div>
 
             <button
-              onClick={() => setAbierto(false)}
+              onClick={() =>
+                setAbierto(false)
+              }
               className="text-white/80 hover:text-white text-base font-bold cursor-pointer"
             >
               ✕
@@ -334,7 +564,10 @@ export default function ChatWidget({ tiendaId }: { tiendaId?: number | string })
 
           </div>
 
-          {/* MENSAJES */}
+          {/* ==================================================
+              MENSAJES
+          ================================================== */}
+
           <div className="flex-1 overflow-y-auto p-3 space-y-2 bg-gray-50">
 
             {mensajes.map((m, i) => (
@@ -372,7 +605,10 @@ export default function ChatWidget({ tiendaId }: { tiendaId?: number | string })
 
           </div>
 
-          {/* INPUT */}
+          {/* ==================================================
+              INPUT
+          ================================================== */}
+
           <form
             onSubmit={enviarMensaje}
             className="bg-white border-t border-gray-200 p-2.5 flex gap-2"
@@ -382,12 +618,15 @@ export default function ChatWidget({ tiendaId }: { tiendaId?: number | string })
               type="text"
               value={input}
               onChange={(e) =>
-                setInput(e.target.value)
+                setInput(
+                  e.target.value
+                )
               }
               placeholder="Escribe tu mensaje..."
               className="flex-1 border border-gray-300 rounded-xl px-3 py-2 text-sm focus:outline-none"
               style={{
-                borderColor: colorPrimario
+                borderColor:
+                  colorPrimario
               }}
             />
 
@@ -396,7 +635,8 @@ export default function ChatWidget({ tiendaId }: { tiendaId?: number | string })
               disabled={cargando}
               className="text-white px-4 py-2 rounded-xl text-sm font-medium hover:opacity-90 disabled:opacity-50 cursor-pointer transition-colors duration-300"
               style={{
-                backgroundColor: colorPrimario
+                backgroundColor:
+                  colorPrimario
               }}
             >
               Enviar
@@ -405,9 +645,13 @@ export default function ChatWidget({ tiendaId }: { tiendaId?: number | string })
           </form>
 
         </div>
+
       )}
 
-      {/* BOTÓN DEL CHAT */}
+      {/* ======================================================
+          BOTÓN DEL CHAT
+      ====================================================== */}
+
       <button
         onClick={() => {
 
@@ -420,7 +664,8 @@ export default function ChatWidget({ tiendaId }: { tiendaId?: number | string })
         }}
         className="text-white w-14 h-14 rounded-full shadow-2xl flex items-center justify-center hover:scale-105 transition-all duration-300 cursor-pointer overflow-hidden border-2 border-white/20"
         style={{
-          backgroundColor: colorPrimario
+          backgroundColor:
+            colorPrimario
         }}
         aria-label="Abrir chat"
       >
