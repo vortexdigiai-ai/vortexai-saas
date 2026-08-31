@@ -64,6 +64,9 @@ const [faqs, setFaqs] = useState('')
 const [archivoCSV, setArchivoCSV] = useState<File | null>(null);
 const [subiendoCSV, setSubiendoCSV] = useState(false);
 const [mensajeCSV, setMensajeCSV] = useState('');
+const [urlTienda, setUrlTienda] = useState('');
+const [extrayendoWeb, setExtrayendoWeb] = useState(false);
+const [mensajeWeb, setMensajeWeb] = useState('');
 
 const subirCSV = async () => {
   if (!archivoCSV) {
@@ -110,6 +113,61 @@ const subirCSV = async () => {
 
   } finally {
     setSubiendoCSV(false);
+  }
+};
+
+const extraerWeb = async () => {
+  if (!urlTienda.trim()) {
+    setMensajeWeb('Introduce primero la URL de tu tienda.');
+    return;
+  }
+
+  setExtrayendoWeb(true);
+  setMensajeWeb('');
+
+  try {
+    let url = urlTienda.trim();
+
+    if (!url.startsWith('http://') && !url.startsWith('https://')) {
+      url = `https://${url}`;
+    }
+
+    const response = await fetch('/api/import-url', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        url,
+        user_id: String(userId),
+      }),
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      setMensajeWeb(
+        data.error || 'No se pudieron extraer los productos.'
+      );
+      return;
+    }
+
+    setMensajeWeb(
+      `¡Éxito! Se han extraído ${data.total_productos || 0} productos.`
+    );
+
+  } catch (error) {
+    console.error(
+      'VortexAI: error extrayendo tienda:',
+      error
+    );
+
+    setMensajeWeb(
+      'Error de conexión con el servidor.'
+    );
+
+  } finally {
+    setExtrayendoWeb(false);
   }
 };
 
@@ -731,20 +789,38 @@ de tu tienda online.
 </p>
 {/* NUEVA FUNCIÓN: Sincronización por URL */}
 <div className="mb-4">
-<label className="block text-xs font-medium text-gray-300 mb-1.5">Sincronizar mediante URL Web (Opcional)</label>
-<div className="flex gap-2">
-<input
-type="text"
-placeholder="https://mitienda.com"
-className="w-full bg-zinc-900 border border-zinc-700 rounded-lg p-2.5 text-xs text-white focus:outline-none focus:border-rose-500"
-/>
-<button
-type="button"
-className="px-4 py-2.5 bg-zinc-800 hover:bg-zinc-700 text-xs font-medium rounded-lg border border-zinc-700 transition-all text-nowrap"
->
-Extraer Web
-</button>
-</div>
+  <label className="block text-xs font-medium text-gray-300 mb-1.5">
+    Sincronizar mediante URL Web (Opcional)
+  </label>
+
+  <div className="flex gap-2">
+    <input
+      type="text"
+      value={urlTienda}
+      onChange={(e) => {
+        setUrlTienda(e.target.value);
+        setMensajeWeb('');
+      }}
+      placeholder="https://mitienda.com"
+      className="w-full bg-zinc-900 border border-zinc-700 rounded-lg p-2.5 text-xs text-white focus:outline-none focus:border-rose-500"
+      disabled={extrayendoWeb}
+    />
+
+    <button
+      type="button"
+      onClick={extraerWeb}
+      disabled={extrayendoWeb || !urlTienda.trim()}
+      className="px-4 py-2.5 bg-zinc-800 hover:bg-zinc-700 text-xs font-medium rounded-lg border border-zinc-700 transition-all text-nowrap disabled:opacity-50 disabled:cursor-not-allowed"
+    >
+      {extrayendoWeb ? 'Extrayendo...' : 'Extraer Web'}
+    </button>
+  </div>
+
+  {mensajeWeb && (
+    <p className="text-xs text-gray-400 mt-2">
+      {mensajeWeb}
+    </p>
+  )}
 </div>
 {/* Subida de CSV original */}
 <div className="space-y-3 pt-2 border-t border-zinc-900">
