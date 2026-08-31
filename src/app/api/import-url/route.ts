@@ -110,6 +110,70 @@ function extraerProductosJSONLD(
 }
 
 // ============================================================
+// EXTRAER ENLACES DE PRODUCTOS DEL HTML
+// ============================================================
+
+function extraerEnlacesProductos(
+  html: string,
+  baseUrl: string
+): Record<string, any>[] {
+  const productos: Record<string, any>[] = [];
+  const vistos = new Set<string>();
+
+  const regex =
+    /<a[^>]+href=["']([^"']*\/products\/[^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;
+
+  let match;
+
+  while ((match = regex.exec(html)) !== null) {
+    try {
+      const href = match[1];
+      const contenido = match[2];
+
+      const urlProducto = new URL(
+        href,
+        baseUrl
+      ).toString();
+
+      const urlLimpia =
+        urlProducto.split('?')[0];
+
+      if (vistos.has(urlLimpia)) {
+        continue;
+      }
+
+      vistos.add(urlLimpia);
+
+      const nombre = contenido
+        .replace(/<[^>]*>/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+
+      if (!nombre) {
+        continue;
+      }
+
+      productos.push({
+        nombre,
+        descripcion: '',
+        imagen: '',
+        url: urlLimpia,
+        sku: '',
+        marca: '',
+        precio: '',
+        moneda: '',
+        disponibilidad: ''
+      });
+
+    } catch {
+      // Ignorar enlaces inválidos
+    }
+  }
+
+  return productos;
+}
+
+// ============================================================
 // LIMPIAR DUPLICADOS
 // ============================================================
 
@@ -276,27 +340,38 @@ export async function POST(req: Request) {
     // ========================================================
 
     let productos =
-      extraerProductosJSONLD(html);
+  extraerProductosJSONLD(html);
 
-    productos =
-      eliminarDuplicados(productos);
+// ========================================================
+// FALLBACK: BUSCAR ENLACES DE PRODUCTOS
+// ========================================================
 
-    // ========================================================
-    // COMPROBAR RESULTADO
-    // ========================================================
+if (productos.length === 0) {
+  productos =
+    extraerEnlacesProductos(
+      html,
+      urlFinal
+    );
+}
 
-    if (productos.length === 0) {
+productos =
+  eliminarDuplicados(productos);
 
-      return NextResponse.json(
-        {
-          error:
-            'No se han encontrado productos automáticamente en esta página. Prueba con una URL de producto o utiliza el CSV.'
-        },
-        {
-          status: 422
-        }
-      );
+// ========================================================
+// COMPROBAR RESULTADO
+// ========================================================
+
+if (productos.length === 0) {
+  return NextResponse.json(
+    {
+      error:
+        'No se han encontrado productos automáticamente en esta página. Prueba con una URL de producto o utiliza el CSV.'
+    },
+    {
+      status: 422
     }
+  );
+}
 
     // ========================================================
     // BUSCAR TIENDA
