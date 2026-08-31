@@ -18,6 +18,16 @@ export async function POST(req: Request) {
     const updateData: Record<string, any> = {
   user_id: user_id,
 
+  // POLÍTICAS Y BASE DE CONOCIMIENTO
+  tiempos_envio:
+    body.tiempos_envio || '',
+
+  politicas:
+    body.politicas || '',
+
+  faqs:
+    body.faqs || '',
+
   // PERSONALIZACIÓN
   color_primario:
     body.color_primario ||
