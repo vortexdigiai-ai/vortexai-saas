@@ -1,6 +1,7 @@
 'use client'
 import { useState, useEffect } from 'react'
 import CatalogoForm from './catalogo-form'
+import ChatWidget from '@/app/components/chat-widget'
 import { supabase } from '@/lib/supabase'
 import {
 Sparkles,
@@ -64,6 +65,12 @@ const [faqs, setFaqs] = useState('')
 const [archivoCSV, setArchivoCSV] = useState<File | null>(null);
 const [subiendoCSV, setSubiendoCSV] = useState(false);
 const [mensajeCSV, setMensajeCSV] = useState('');
+// Estados del chat de prueba del Overview
+const [inputChat, setInputChat] = useState('');
+const [chatMensajes, setChatMensajes] = useState<
+  { remitente: 'user' | 'ai'; texto: string }[]
+>([]);
+const [isTyping, setIsTyping] = useState(false);
 const [urlTienda, setUrlTienda] = useState('');
 const [extrayendoWeb, setExtrayendoWeb] = useState(false);
 const [mensajeWeb, setMensajeWeb] = useState('');
@@ -171,18 +178,9 @@ const extraerWeb = async () => {
   }
 };
 
-// Estados y función para el simulador del chat
-const [chatMensajes, setChatMensajes] = useState<Array<{ remitente:
-'user' | 'ai', texto: string }>>([
-{ remitente: 'ai', texto: '¡Hola! 👋 Soy el asistente virtual de tu tienda. Pregúntame sobre envíos, políticas o productos disponibles.' }
-])
-const [inputChat, setInputChat] = useState('')
-const [isTyping, setIsTyping] = useState(false)
-
 // Estados para Flujos Híbridos y Reglas de Escape
 const [accionFallback, setAccionFallback] = useState('formulario'); // 'formulario' | 'whatsapp' | 'email'
 const [whatsappSoporte, setWhatsappSoporte] = useState('');
-const [emailSoporte, setEmailSoporte] = useState('');
 const [umbralFrustracion, setUmbralFrustracion] = useState('2'); // Intentos antes de derivar
 const [mensajeFallback, setMensajeFallback] = useState('Vaya, parece que no tengo esa información exacta. Déjanos tus datos y un especialista humano te contactará de inmediato.');
 
@@ -256,14 +254,6 @@ if (data) {
 setTiemposEnvio(data.tiempos_envio || '')
 setPoliticas(data.politicas || '')
 setFaqs(data.faqs || '')
-setAccionFallback(data.accion_fallback || 'formulario')
-setWhatsappSoporte(data.whatsapp_soporte || '')
-setEmailSoporte(data.email_soporte || '')
-setUmbralFrustracion(String(data.umbral_frustracion || 2))
-setMensajeFallback(
-  data.mensaje_fallback ||
-  'Vaya, parece que no tengo esa información exacta. Déjanos tus datos y un especialista humano te contactará de inmediato.'
-)
 setExitIntent(data.exit_intent || false)
 setRecomendador(data.recomendador ?? true)
 setModoPersuasivo(data.modo_persuasivo || false)
@@ -352,13 +342,6 @@ const guardarConfiguracion = async () => {
         tiempos_envio: tiemposEnvio,
         politicas: politicas,
         faqs: faqs,
-
-        // FLUJOS HÍBRIDOS Y REGLAS DE ESCAPE
-        accion_fallback: accionFallback,
-        whatsapp_soporte: whatsappSoporte,
-        email_soporte: emailSoporte,
-        umbral_frustracion: Number(umbralFrustracion),
-        mensaje_fallback: mensajeFallback,
 
         // FUNCIONES IA
         detector_idioma: detectorIdioma,
@@ -696,84 +679,74 @@ Interacciones reales registradas hoy desde tu widget.
 </p>
 </div>
 </div>
-{/* SIMULADOR FUNCIONAL DEL CHATBOT */}
+
+{/* ESTADO DE CONFIGURACIÓN */}
+<div className="grid grid-cols-1 md:grid-cols-4 gap-3 mb-8">
+  <button type="button" onClick={() => setActiveTab('catalogo')} className="text-left bg-zinc-950 border border-zinc-800 rounded-xl p-4 hover:border-zinc-700 transition-all cursor-pointer">
+    <p className="text-[10px] uppercase tracking-wider text-slate-500">Catálogo</p>
+    <p className="text-sm font-semibold text-white mt-1">{userId ? 'Conectado' : 'Cargando...'}</p>
+    <p className="text-[11px] text-slate-500 mt-1">Productos disponibles para la IA</p>
+  </button>
+  <button type="button" onClick={() => setActiveTab('catalogo')} className="text-left bg-zinc-950 border border-zinc-800 rounded-xl p-4 hover:border-zinc-700 transition-all cursor-pointer">
+    <p className="text-[10px] uppercase tracking-wider text-slate-500">Políticas</p>
+    <p className="text-sm font-semibold text-white mt-1">{tiemposEnvio || politicas || faqs ? 'Configuradas' : 'Pendientes'}</p>
+    <p className="text-[11px] text-slate-500 mt-1">Información que consulta el chatbot</p>
+  </button>
+  <button type="button" onClick={() => setActiveTab('ia')} className="text-left bg-zinc-950 border border-zinc-800 rounded-xl p-4 hover:border-zinc-700 transition-all cursor-pointer">
+    <p className="text-[10px] uppercase tracking-wider text-slate-500">Funciones IA</p>
+    <p className="text-sm font-semibold text-white mt-1">{[detectorIdioma, exitIntent, recomendador, modoPersuasivo, carritoAbandonado, analisisSentimiento, cuponesFlash].filter(Boolean).length} activas</p>
+    <p className="text-[11px] text-slate-500 mt-1">Módulos habilitados en tu plan</p>
+  </button>
+  <button type="button" onClick={() => setActiveTab('widget')} className="text-left bg-zinc-950 border border-zinc-800 rounded-xl p-4 hover:border-zinc-700 transition-all cursor-pointer">
+    <p className="text-[10px] uppercase tracking-wider text-slate-500">Widget</p>
+    <p className="text-sm font-semibold text-white mt-1">{planCliente.toLowerCase() === 'free' ? 'Plan Free' : 'Disponible'}</p>
+    <p className="text-[11px] text-slate-500 mt-1">Código de instalación y despliegue</p>
+  </button>
+</div>
+
+{/* PREVIEW REAL DEL CHATBOT */}
 <div className="bg-zinc-950 border border-zinc-800 rounded-xl overflow-hidden shadow-2xl">
-<div className="px-6 py-4 bg-zinc-900/60 border-b border-zinc-800 flex justify-between items-center">
-<div className="flex items-center gap-2.5">
-<div className="w-3 h-3 rounded-full bg-rose-500"></div>
-<h3 className="font-semibold text-sm text-white">Simulador
-Funcional del Chatbot (Modo Pruebas)</h3>
-</div>
-<span className="text-[10px] px-2.5 py-1 rounded-md bg-zinc-800 text-zinc-300 font-medium border border-zinc-700">
-En Vivo
-</span>
-</div>
-<div className="p-6">
-<p className="text-xs text-gray-400 mb-4">
-Prueba exactamente cómo se comporta tu IA con los datos de tu
-catálogo y directrices configuradas antes de llevarlo a producción.
-</p>
-{/* Caja del chat reactiva */}
-<div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4 h-64 overflow-y-auto mb-4 flex flex-col gap-3">
-{chatMensajes && chatMensajes.map((msg, index) => (
-<div
-key={index}
-className={`flex items-start gap-2.5 ${msg.remitente === 'user' ? 'flex-row-reverse' : ''}`}
->
-<div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold text-white shrink-0 ${ msg.remitente === 'user' ? 'bg-zinc-700' : 'bg-rose-600' }`}>
-{msg.remitente === 'user' ? 'Tú' : 'AI'}
-</div>
-<div className={`text-xs p-3 rounded-2xl max-w-[80%] leading-relaxed ${ msg.remitente === 'user' ? 'bg-rose-600 text-white rounded-tr-sm' : 'bg-zinc-800 text-gray-200 rounded-tl-sm' }`}>
-{msg.texto}
-</div>
-</div>
-))}
-{isTyping && (
-<div className="flex items-start gap-2.5">
-<div className="w-7 h-7 rounded-full bg-rose-600 flex items-center justify-center text-xs font-bold text-white shrink-0">
-AI
-</div>
-<div className="bg-zinc-800 text-gray-400 text-xs p-3 rounded-2xl rounded-tl-sm animate-pulse">
-Escribiendo respuesta basada en el catálogo...
-</div>
-</div>
-)}
-</div>
-{/* Sugerencias rápidas */}
-<div className="flex items-center gap-2 mb-4 overflow-x-auto pb-1">
-<span className="text-[10px] text-gray-400 uppercase tracking-wider shrink-0">Prueba rápida:</span>
-<button
-type="button"
-onClick={() => setInputChat("¿Cuánto tardan los envíos?")}
-className="text-[11px] bg-zinc-900 hover:bg-zinc-800 text-gray-300 px-3 py-1 rounded-full border border-zinc-800 transition-all shrink-0 cursor-pointer"
->
-📦 ¿Cuánto tardan los envíos?
-</button>
-<button
-type="button"
-onClick={() => setInputChat("¿Cuáles son las formas de pago?")}
-className="text-[11px] bg-zinc-900 hover:bg-zinc-800 text-gray-300 px-3 py-1 rounded-full border border-zinc-800 transition-all shrink-0 cursor-pointer"
->
-💳 ¿Cuáles son las formas de pago?
-</button>
-</div>
-{/* Input de envío interactivo */}
-<form onSubmit={manejarEnvioChat} className="flex gap-2">
-<input
-type="text"
-value={inputChat}
-onChange={(e) => setInputChat(e.target.value)}
-placeholder="Escribe una pregunta para probar tu bot..."
-className="w-full bg-zinc-900 border border-zinc-700 rounded-xl px-4 py-3 text-xs text-white focus:outline-none focus:border-rose-500"
-/>
-<button
-type="submit"
-className="px-6 py-3 bg-rose-600 hover:bg-rose-500 text-white font-medium text-xs rounded-xl transition-all shadow-lg shadow-rose-950/50 text-nowrap cursor-pointer"
->
-Enviar
-</button>
-</form>
-</div>
+  <div className="px-6 py-4 bg-zinc-900/60 border-b border-zinc-800 flex flex-col md:flex-row md:justify-between md:items-center gap-3">
+    <div>
+      <div className="flex items-center gap-2.5">
+        <div className="w-3 h-3 rounded-full bg-rose-500 animate-pulse"></div>
+        <h3 className="font-semibold text-sm text-white">Preview real del Chatbot</h3>
+      </div>
+      <p className="text-[11px] text-gray-500 mt-1 ml-5">
+        Este es el mismo chatbot que usarán tus clientes: utiliza el mismo backend, catálogo, políticas y configuración guardada.
+      </p>
+    </div>
+    <span className="self-start md:self-auto text-[10px] px-2.5 py-1 rounded-md bg-emerald-500/10 text-emerald-400 font-medium border border-emerald-500/20">
+      IA EN VIVO
+    </span>
+  </div>
+
+  <div className="p-4">
+    <div className="relative h-[430px] overflow-hidden rounded-xl border border-zinc-800 bg-gradient-to-br from-zinc-900 to-zinc-950">
+      {userId ? (
+        <ChatWidget tiendaId={userId} modoPreview />
+      ) : (
+        <div className="h-full flex items-center justify-center text-xs text-slate-500">
+          Cargando identificador de la tienda...
+        </div>
+      )}
+    </div>
+
+    <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-3">
+      <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-3">
+        <p className="text-[10px] uppercase tracking-wider text-slate-500">Base de conocimiento</p>
+        <p className="text-xs text-slate-200 mt-1">Catálogo + políticas + FAQs</p>
+      </div>
+      <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-3">
+        <p className="text-[10px] uppercase tracking-wider text-slate-500">Configuración</p>
+        <p className="text-xs text-slate-200 mt-1">Se carga desde Supabase en tiempo real</p>
+      </div>
+      <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-3">
+        <p className="text-[10px] uppercase tracking-wider text-slate-500">Producción</p>
+        <p className="text-xs text-slate-200 mt-1">El mismo endpoint /api/chat</p>
+      </div>
+    </div>
+  </div>
 </div>
 </div>
 );
@@ -1119,19 +1092,6 @@ className="toggle accent-rose-500 cursor-pointer h-5 w-5 disabled:cursor-not-all
               value={whatsappSoporte}
               onChange={(e) => setWhatsappSoporte(e.target.value)}
               placeholder="Ej: +34600000000"
-              className="w-full bg-zinc-900 border border-zinc-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-rose-500"
-            />
-          </div>
-        )}
-
-        {accionFallback === 'email' && (
-          <div>
-            <label className="block text-xs font-medium text-gray-300 mb-1">Email de Soporte</label>
-            <input
-              type="email"
-              value={emailSoporte}
-              onChange={(e) => setEmailSoporte(e.target.value)}
-              placeholder="Ej: soporte@mitienda.com"
               className="w-full bg-zinc-900 border border-zinc-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-rose-500"
             />
           </div>

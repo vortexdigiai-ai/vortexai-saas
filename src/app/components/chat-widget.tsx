@@ -7,7 +7,13 @@ type Mensaje = {
   texto: string
 }
 
-export default function ChatWidget({ tiendaId }: { tiendaId?: number | string }) {
+export default function ChatWidget({
+  tiendaId,
+  modoPreview = false,
+}: {
+  tiendaId?: number | string
+  modoPreview?: boolean
+}) {
   const [abierto, setAbierto] = useState(false)
   const [nombreAsistente, setNombreAsistente] = useState('Asistente Virtual IA')
   const [colorPrimario, setColorPrimario] = useState('#f43f5e')
@@ -18,8 +24,7 @@ export default function ChatWidget({ tiendaId }: { tiendaId?: number | string })
   // VISITOR ID
   // ============================================================
 
-  const [visitorId, setVisitorId] = useState<string | null>(null)
-
+const [visitorId, setVisitorId] = useState<string | null>(null)
   // ============================================================
   // EXIT INTENT
   // ============================================================
@@ -264,6 +269,7 @@ export default function ChatWidget({ tiendaId }: { tiendaId?: number | string })
 // ============================================================
 
 useEffect(() => {
+  if (modoPreview) return
   if (!idActual) return
 
   // Esperamos a que widget.js nos entregue el visitorId
@@ -344,6 +350,8 @@ useEffect(() => {
 
   useEffect(() => {
 
+    if (modoPreview) return
+
     const recibirVisitorId = (
       event: MessageEvent
     ) => {
@@ -410,6 +418,8 @@ useEffect(() => {
   // ============================================================
 
   useEffect(() => {
+
+    if (modoPreview) return
 
     if (!exitIntent) {
       return
@@ -693,9 +703,13 @@ useEffect(() => {
   // ============================================================
 
   const posicionContenedor =
-    posicion === 'izquierda'
-      ? 'fixed bottom-4 left-4'
-      : 'fixed bottom-4 right-4'
+    modoPreview
+      ? posicion === 'izquierda'
+        ? 'relative w-full h-full flex items-end justify-start'
+        : 'relative w-full h-full flex items-end justify-end'
+      : posicion === 'izquierda'
+        ? 'fixed bottom-4 left-4'
+        : 'fixed bottom-4 right-4'
 
   const posicionVentana =
     posicion === 'izquierda'

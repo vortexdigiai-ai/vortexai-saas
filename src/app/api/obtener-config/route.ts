@@ -24,16 +24,36 @@ export async function GET(req: Request) {
 
     const { data, error } = await supabase
       .from('tiendas')
-      .select(
-  'user_id, color_primario, mensaje_bienvenida, nombre_asistente, posicion, avatar_url, exit_intent'
-)
-      
+      .select(`
+        user_id,
+        nombre_tienda,
+        color_primario,
+        mensaje_bienvenida,
+        nombre_asistente,
+        posicion,
+        avatar_url,
+        tiempos_envio,
+        politicas,
+        faqs,
+        accion_fallback,
+        whatsapp_soporte,
+        email_soporte,
+        umbral_frustracion,
+        mensaje_fallback,
+        detector_idioma,
+        exit_intent,
+        cross_selling,
+        modo_persuasivo,
+        carrito_abandonado,
+        analisis_sentimiento,
+        cupones_flash,
+        plan
+      `)
       .eq('user_id', tiendaId)
       .maybeSingle();
 
     if (error) {
       console.error('Error obteniendo configuración:', error);
-
       return NextResponse.json(
         { error: error.message },
         { status: 500 }
@@ -55,11 +75,14 @@ export async function GET(req: Request) {
         Expires: '0',
       },
     });
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error('Error interno obteniendo configuración:', err);
 
+    const mensaje =
+      err instanceof Error ? err.message : 'Error interno';
+
     return NextResponse.json(
-      { error: err.message || 'Error interno' },
+      { error: mensaje },
       { status: 500 }
     );
   }
