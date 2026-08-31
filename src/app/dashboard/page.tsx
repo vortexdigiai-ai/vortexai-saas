@@ -339,6 +339,11 @@ const guardarConfiguracion = async () => {
         posicion: posicionWidget,
         avatar_url: avatarFinal,
 
+        // POLÍTICAS Y BASE DE CONOCIMIENTO
+        tiempos_envio: tiemposEnvio,
+        politicas: politicas,
+        faqs: faqs,
+
         // FUNCIONES IA
         detector_idioma: detectorIdioma,
         exit_intent: exitIntent,
@@ -886,45 +891,43 @@ dudas frecuentes de postventa.
 <div>
 <label className="block text-xs font-medium text-gray-300 mb-1">Tiempos y Costes de Envío</label>
 <textarea
-  rows={2}
-  value={tiemposEnvio}
-  onChange={(e) => setTiemposEnvio(e.target.value)}
-  placeholder="Ej: Envíos en 24/48h península. Gratis a partir de 50€."
-  className="w-full bg-zinc-900 border border-zinc-700 rounded-lg p-2.5 text-xs text-white focus:outline-none focus:border-rose-500 resize-none"
+rows={2}
+value={tiemposEnvio}
+onChange={(e) => setTiemposEnvio(e.target.value)}
+placeholder="Ej: Envíos en 24/48h península. Gratis a partir de 50€."
+className="w-full bg-zinc-900 border border-zinc-700 rounded-lg p-2.5 text-xs text-white focus:outline-none focus:border-rose-500 resize-none"
 />
 </div>
 <div>
 <label className="block text-xs font-medium text-gray-300 mb-1">Políticas de Devolución</label>
 <textarea
-  rows={2}
-  value={politicas}
-  onChange={(e) => setPoliticas(e.target.value)}
-  placeholder="Ej: 30 días naturales para cambios y devoluciones sin coste."
-  className="w-full bg-zinc-900 border border-zinc-700 rounded-lg p-2.5 text-xs text-white focus:outline-none focus:border-rose-500 resize-none"
+rows={2}
+value={politicas}
+onChange={(e) => setPoliticas(e.target.value)}
+placeholder="Ej: 30 días naturales para cambios y devoluciones sin coste."
+className="w-full bg-zinc-900 border border-zinc-700 rounded-lg p-2.5 text-xs text-white focus:outline-none focus:border-rose-500 resize-none"
 />
 </div>
 {/* NUEVA FUNCIÓN: Preguntas Frecuentes Rápidas (FAQs) */}
 <div>
 <label className="block text-xs font-medium text-gray-300 mb-1">✨ FAQs Personalizadas Extra (Opcional)</label>
 <input
-  type="text"
-  value={faqs}
-  onChange={(e) => setFaqs(e.target.value)}
-  placeholder="Ej: ¿Tenéis tienda física? -> Sí, en Barcelona."
-  className="w-full bg-zinc-900 border border-zinc-700 rounded-lg p-2.5 text-xs text-white focus:outline-none focus:border-rose-500"
+type="text"
+value={faqs}
+onChange={(e) => setFaqs(e.target.value)}
+placeholder="Ej: ¿Tenéis tienda física? -> Sí, en Barcelona."
+className="w-full bg-zinc-900 border border-zinc-700 rounded-lg p-2.5 text-xs text-white focus:outline-none focus:border-rose-500"
 />
 </div>
 </div>
 <div className="mt-6 pt-4 border-t border-zinc-900">
 <button
-  type="button"
-  onClick={guardarConfiguracion}
-  disabled={guardandoConfig}
-  className="w-full py-3 bg-zinc-900 hover:bg-zinc-800 text-white font-medium text-xs rounded-xl border border-zinc-700 transition-all disabled:opacity-50"
+type="button"
+onClick={guardarConfiguracion}
+disabled={guardandoConfig || !userId}
+className="w-full py-3 bg-zinc-900 hover:bg-zinc-800 text-white font-medium text-xs rounded-xl border border-zinc-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
 >
-  {guardandoConfig
-    ? 'Guardando...'
-    : 'Guardar Políticas y FAQs'}
+{guardandoConfig ? 'Guardando políticas...' : 'Guardar Políticas y FAQs'}
 </button>
 </div>
 </div>

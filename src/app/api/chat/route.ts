@@ -68,6 +68,9 @@ if ((!mensaje && !inicioWidget) || !tiendaId) {
       .select(`
         nombre_tienda,
         productos_json,
+        tiempos_envio,
+        politicas,
+        faqs,
         detector_idioma,
         exit_intent,
         cross_selling,
@@ -98,6 +101,21 @@ if ((!mensaje && !inicioWidget) || !tiendaId) {
       JSON.stringify(
         tienda.productos_json || []
       )
+
+    // ============================================================
+    // POLÍTICAS Y BASE DE CONOCIMIENTO
+    // ============================================================
+
+    const politicasTexto = `
+TIEMPOS Y COSTES DE ENVÍO:
+${tienda.tiempos_envio || 'No hay información de envíos configurada.'}
+
+POLÍTICAS DE DEVOLUCIÓN:
+${tienda.politicas || 'No hay información de devoluciones configurada.'}
+
+FAQS PERSONALIZADAS:
+${tienda.faqs || 'No hay FAQs personalizadas configuradas.'}
+`
 
     // ============================================================
     // CARRITO DEL VISITANTE
@@ -426,11 +444,17 @@ IMPORTANTE:
         system: `
 Eres el asistente de ventas de la tienda "${tienda.nombre_tienda || 'Virtual'}".
 
-Responde a las preguntas del cliente usando SOLO la información disponible en este catálogo de productos:
+Responde a las preguntas del cliente usando SOLO la información disponible en la base de conocimiento de esta tienda.
 
+CATÁLOGO DE PRODUCTOS:
 ${catalogoTexto}
 
+POLÍTICAS Y FAQS DE LA TIENDA:
+${politicasTexto}
+
 Si no tienes la información necesaria, dilo con sinceridad y no te la inventes.
+
+Cuando el cliente pregunte por envíos, plazos, costes de envío, devoluciones, cambios o una FAQ, utiliza la información correspondiente de POLÍTICAS Y FAQS DE LA TIENDA. No respondas que no tienes acceso a esa información si sí aparece ahí.
 
 Sé amable, breve y natural, como un buen dependiente de tienda.
 
