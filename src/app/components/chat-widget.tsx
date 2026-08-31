@@ -972,7 +972,7 @@ useEffect(() => {
                       )
                     }
                     placeholder="Tu nombre"
-                    className="w-full border border-gray-300 rounded-xl px-3 py-2 text-xs focus:outline-none"
+                    className="w-full border border-gray-300 rounded-xl px-3 py-2 text-xs text-gray-900 placeholder:text-gray-400 focus:outline-none"
                   />
 
                   <input
@@ -991,7 +991,7 @@ useEffect(() => {
                       )
                     }
                     placeholder="Tu email"
-                    className="w-full border border-gray-300 rounded-xl px-3 py-2 text-xs focus:outline-none"
+                    className="w-full border border-gray-300 rounded-xl px-3 py-2 text-xs text-gray-900 placeholder:text-gray-400 focus:outline-none"
                   />
 
                   <textarea
@@ -1010,7 +1010,7 @@ useEffect(() => {
                       )
                     }
                     placeholder="¿En qué podemos ayudarte?"
-                    className="w-full border border-gray-300 rounded-xl px-3 py-2 text-xs focus:outline-none resize-none"
+                    className="w-full border border-gray-300 rounded-xl px-3 py-2 text-xs text-gray-900 placeholder:text-gray-400 focus:outline-none resize-none"
                   />
 
                   <button
@@ -1048,7 +1048,7 @@ useEffect(() => {
                 )
               }
               placeholder="Escribe tu mensaje..."
-              className="flex-1 border border-gray-300 rounded-xl px-3 py-2 text-sm focus:outline-none"
+              className="flex-1 border border-gray-300 rounded-xl px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none"
               style={{
                 borderColor:
                   colorPrimario
