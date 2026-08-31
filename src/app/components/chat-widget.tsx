@@ -44,6 +44,8 @@ export default function ChatWidget({ tiendaId }: { tiendaId?: number | string })
 
   const finRef = useRef<HTMLDivElement>(null)
 
+  const carritoComprobado = useRef(false)
+
   // ============================================================
   // OBTENER ID REAL DE LA TIENDA
   // ============================================================
@@ -230,63 +232,84 @@ export default function ChatWidget({ tiendaId }: { tiendaId?: number | string })
 
   }, [cargarConfiguracion])
 
-    // ============================================================
-  // COMPROBAR CARRITO ABANDONADO AL ENTRAR
   // ============================================================
+// COMPROBAR CARRITO ABANDONADO AL ENTRAR
+// ============================================================
 
-    useEffect(() => {
-    if (!idActual) return
+useEffect(() => {
+  if (!idActual) return
 
-    const comprobarCarritoAbandonado = async () => {
-      try {
-        const visitorId =
-          typeof window !== 'undefined'
-            ? localStorage.getItem('vortexai_visitor_id')
-            : null
+  // Esperamos a que widget.js nos entregue el visitorId
+  if (!visitorId) return
 
-        if (!visitorId) return
+  // Evitamos comprobar el mismo carrito varias veces
+  if (carritoComprobado.current) return
 
-        const res = await fetch('/api/chat', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            mensaje: '',
-            tiendaId: idActual,
-            visitorId: visitorId,
-            inicioWidget: true
-          })
+  carritoComprobado.current = true
+
+  const comprobarCarritoAbandonado = async () => {
+    try {
+      const res = await fetch('/api/chat', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          mensaje: '',
+          tiendaId: idActual,
+          visitorId: visitorId,
+          inicioWidget: true
         })
+      })
 
-        if (!res.ok) return
-
-        const data = await res.json()
-
-        if (
-          data.carritoAbandonado === true &&
-          data.respuesta
-        ) {
-          setMensajes((prev) => [
-            ...prev,
-            {
-              rol: 'bot',
-              texto: data.respuesta
-            }
-          ])
-
-          setAbierto(true)
-        }
-      } catch (error) {
+      if (!res.ok) {
         console.error(
           'VortexAI: error comprobando carrito abandonado:',
-          error
+          res.status,
+          res.statusText
         )
-      }
-    }
 
-    comprobarCarritoAbandonado()
-  }, [idActual])
+        return
+      }
+
+      const data = await res.json()
+
+      console.log(
+        'VortexAI: comprobación de carrito:',
+        data
+      )
+
+      if (
+        data.carritoAbandonado === true &&
+        data.respuesta
+      ) {
+        setMensajes((prev) => [
+          ...prev,
+          {
+            rol: 'bot',
+            texto: data.respuesta
+          }
+        ])
+
+        // Abrimos automáticamente el chatbot
+        setAbierto(true)
+      }
+
+    } catch (error) {
+
+      console.error(
+        'VortexAI: error comprobando carrito abandonado:',
+        error
+      )
+
+    }
+  }
+
+  comprobarCarritoAbandonado()
+
+}, [idActual, visitorId])
+
+
 
   // ============================================================
   // RECIBIR VISITOR ID DESDE widget.js
