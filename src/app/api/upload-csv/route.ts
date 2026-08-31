@@ -146,15 +146,11 @@ export async function POST(req: Request) {
     // ==========================================================
 
     if (!file) {
-      return NextResponse.json(
-        {
-          error:
-            'No se ha subido ningún archivo.'
-        },
-        {
-          status: 400
-        }
-      );
+  return NextResponse.json(
+    { error: 'No se ha subido ningún archivo.' },
+    { status: 400 }
+  );
+}
     }
 
     if (!userId) {

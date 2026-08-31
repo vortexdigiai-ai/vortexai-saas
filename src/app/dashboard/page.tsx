@@ -61,6 +61,57 @@ const [avatarEstilo, setAvatarEstilo] = useState('moderno')
 const [tiemposEnvio, setTiemposEnvio] = useState('')
 const [politicas, setPoliticas] = useState('')
 const [faqs, setFaqs] = useState('')
+const [archivoCSV, setArchivoCSV] = useState<File | null>(null);
+const [subiendoCSV, setSubiendoCSV] = useState(false);
+const [mensajeCSV, setMensajeCSV] = useState('');
+
+const subirCSV = async () => {
+  if (!archivoCSV) {
+    setMensajeCSV('Selecciona primero un archivo CSV.');
+    return;
+  }
+
+  setSubiendoCSV(true);
+  setMensajeCSV('');
+
+  try {
+    const formData = new FormData();
+
+    formData.append('archivo_csv', archivoCSV);
+
+    // IMPORTANTE:
+    // Aquí utilizamos el ID de la tienda que ya utiliza tu dashboard.
+    formData.append('user_id', String(userId));
+
+    const response = await fetch('/api/upload-csv', {
+      method: 'POST',
+      body: formData,
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      setMensajeCSV(
+        data.error || 'No se pudo procesar el archivo CSV.'
+      );
+      return;
+    }
+
+    setMensajeCSV(
+      `¡Éxito! Se han procesado ${data.total_productos || 0} productos.`
+    );
+
+  } catch (error) {
+    console.error('VortexAI: error subiendo CSV:', error);
+
+    setMensajeCSV(
+      'Error de conexión con el servidor.'
+    );
+
+  } finally {
+    setSubiendoCSV(false);
+  }
+};
 
 // Estados y función para el simulador del chat
 const [chatMensajes, setChatMensajes] = useState<Array<{ remitente:
@@ -697,22 +748,52 @@ Extraer Web
 </div>
 {/* Subida de CSV original */}
 <div className="space-y-3 pt-2 border-t border-zinc-900">
-<label className="block text-xs font-medium text-gray-300">Archivo CSV del Catálogo</label>
-<div className="flex items-center justify-between p-3 bg-zinc-900 border border-zinc-700 rounded-lg">
-<span className="text-xs text-gray-400 truncate max-w-[200px]">Ningún archivo seleccionado</span>
-<label className="cursor-pointer px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 text-xs font-medium rounded-md border border-zinc-600 transition-all text-white">
-Seleccionar
-<input type="file" accept=".csv" className="hidden" />
-</label>
-</div>
+  <label className="block text-xs font-medium text-gray-300">
+    Archivo CSV del Catálogo
+  </label>
+
+  <div className="flex items-center justify-between p-3 bg-zinc-900 border border-zinc-700 rounded-lg">
+
+    <span className="text-xs text-gray-400 truncate max-w-[200px]">
+      {archivoCSV
+        ? archivoCSV.name
+        : 'Ningún archivo seleccionado'}
+    </span>
+
+    <label className="cursor-pointer px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 text-xs font-medium rounded-md border border-zinc-600 transition-all text-white">
+      Seleccionar
+
+      <input
+        type="file"
+        accept=".csv,text/csv"
+        className="hidden"
+        onChange={(e) => {
+          const archivo = e.target.files?.[0] || null;
+          setArchivoCSV(archivo);
+          setMensajeCSV('');
+        }}
+      />
+    </label>
+
+  </div>
+
+  {mensajeCSV && (
+    <p className="text-xs text-gray-400">
+      {mensajeCSV}
+    </p>
+  )}
 </div>
 </div>
 <div className="mt-6 pt-4 border-t border-zinc-900">
 <button
-type="button"
-className="w-full py-3 bg-rose-600 hover:bg-rose-500 text-white font-medium text-xs rounded-xl transition-all shadow-lg shadow-rose-950/50"
+  type="button"
+  onClick={subirCSV}
+  disabled={subiendoCSV || !archivoCSV}
+  className="w-full py-3 bg-rose-600 hover:bg-rose-500 text-white font-medium text-xs rounded-xl transition-all shadow-lg shadow-rose-950/50 disabled:opacity-50 disabled:cursor-not-allowed"
 >
-Subir y Generar Base de Conocimiento IA
+  {subiendoCSV
+    ? 'Procesando catálogo...'
+    : 'Subir y Generar Base de Conocimiento IA'}
 </button>
 </div>
 </div>
