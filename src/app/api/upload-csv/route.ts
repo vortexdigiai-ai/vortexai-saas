@@ -21,9 +21,7 @@ function parseCSV(text: string): Record<string, string>[] {
     const char = text[i];
     const siguiente = text[i + 1];
 
-    // Comillas
     if (char === '"') {
-      // Comilla doble escapada dentro de un campo
       if (dentroDeComillas && siguiente === '"') {
         value += '"';
         i++;
@@ -34,14 +32,12 @@ function parseCSV(text: string): Record<string, string>[] {
       continue;
     }
 
-    // Coma
     if (char === ',' && !dentroDeComillas) {
       row.push(value.trim());
       value = '';
       continue;
     }
 
-    // Fin de línea
     if (
       (char === '\n' || char === '\r') &&
       !dentroDeComillas
@@ -64,7 +60,6 @@ function parseCSV(text: string): Record<string, string>[] {
     value += char;
   }
 
-  // Último campo
   if (value !== '' || row.length > 0) {
     row.push(value.trim());
 
@@ -77,19 +72,11 @@ function parseCSV(text: string): Record<string, string>[] {
     return [];
   }
 
-  // ==========================================================
-  // CABECERAS
-  // ==========================================================
-
   const headers = rows[0].map((header) =>
     header
       .replace(/^\uFEFF/, '')
       .trim()
   );
-
-  // ==========================================================
-  // PRODUCTOS
-  // ==========================================================
 
   const records = rows
     .slice(1)
@@ -97,7 +84,9 @@ function parseCSV(text: string): Record<string, string>[] {
       const obj: Record<string, string> = {};
 
       headers.forEach((header, index) => {
-        if (!header) return;
+        if (!header) {
+          return;
+        }
 
         obj[header] =
           values[index] !== undefined
@@ -118,15 +107,10 @@ function parseCSV(text: string): Record<string, string>[] {
 
 // ============================================================
 // POST
-// SUBIR CSV
 // ============================================================
 
 export async function POST(req: Request) {
   try {
-    // ==========================================================
-    // FORM DATA
-    // ==========================================================
-
     const formData = await req.formData();
 
     const file = formData.get(
@@ -141,23 +125,25 @@ export async function POST(req: Request) {
       formData.get('nombre_tienda') || ''
     ).trim();
 
-    // ==========================================================
+    // ========================================================
     // VALIDACIONES
-    // ==========================================================
+    // ========================================================
 
     if (!file) {
-  return NextResponse.json(
-    { error: 'No se ha subido ningún archivo.' },
-    { status: 400 }
-  );
-}
+      return NextResponse.json(
+        {
+          error: 'No se ha subido ningún archivo.'
+        },
+        {
+          status: 400
+        }
+      );
     }
 
     if (!userId) {
       return NextResponse.json(
         {
-          error:
-            'Falta el identificador de la tienda.'
+          error: 'Falta el identificador de la tienda.'
         },
         {
           status: 400
@@ -165,18 +151,14 @@ export async function POST(req: Request) {
       );
     }
 
-    // ==========================================================
-    // COMPROBAR EXTENSIÓN
-    // ==========================================================
+    // ========================================================
+    // EXTENSIÓN
+    // ========================================================
 
-    const nombreArchivo =
-      file.name.toLowerCase();
-
-    if (!nombreArchivo.endsWith('.csv')) {
+    if (!file.name.toLowerCase().endsWith('.csv')) {
       return NextResponse.json(
         {
-          error:
-            'El archivo debe ser un CSV.'
+          error: 'El archivo debe ser un CSV.'
         },
         {
           status: 400
@@ -184,18 +166,16 @@ export async function POST(req: Request) {
       );
     }
 
-    // ==========================================================
-    // LEER ARCHIVO
-    // ==========================================================
+    // ========================================================
+    // LEER CSV
+    // ========================================================
 
-    const bufferText =
-      await file.text();
+    const bufferText = await file.text();
 
     if (!bufferText.trim()) {
       return NextResponse.json(
         {
-          error:
-            'El archivo CSV está vacío.'
+          error: 'El archivo CSV está vacío.'
         },
         {
           status: 400
@@ -203,12 +183,11 @@ export async function POST(req: Request) {
       );
     }
 
-    // ==========================================================
-    // PROCESAR CSV
-    // ==========================================================
+    // ========================================================
+    // PARSEAR CSV
+    // ========================================================
 
-    const records =
-      parseCSV(bufferText);
+    const records = parseCSV(bufferText);
 
     if (records.length === 0) {
       return NextResponse.json(
@@ -222,9 +201,9 @@ export async function POST(req: Request) {
       );
     }
 
-    // ==========================================================
-    // GUARDAR EN SUPABASE
-    // ==========================================================
+    // ========================================================
+    // BUSCAR TIENDA
+    // ========================================================
 
     const {
       data: tiendaExistente,
@@ -253,9 +232,9 @@ export async function POST(req: Request) {
       );
     }
 
-    // ==========================================================
-    // ACTUALIZAR TIENDA EXISTENTE
-    // ==========================================================
+    // ========================================================
+    // ACTUALIZAR TIENDA
+    // ========================================================
 
     if (tiendaExistente) {
       const {
@@ -264,15 +243,10 @@ export async function POST(req: Request) {
         .from('tiendas')
         .update({
           nombre_tienda:
-            nombreTienda ||
-            'Mi Tienda',
-          productos_json:
-            records
+            nombreTienda || 'Mi Tienda',
+          productos_json: records
         })
-        .eq(
-          'user_id',
-          userId
-        );
+        .eq('user_id', userId);
 
       if (updateError) {
         console.error(
@@ -291,12 +265,10 @@ export async function POST(req: Request) {
           }
         );
       }
-
     } else {
-
-      // ========================================================
+      // ======================================================
       // CREAR TIENDA
-      // ========================================================
+      // ======================================================
 
       const {
         error: insertError
@@ -306,10 +278,8 @@ export async function POST(req: Request) {
           {
             user_id: userId,
             nombre_tienda:
-              nombreTienda ||
-              'Mi Tienda',
-            productos_json:
-              records
+              nombreTienda || 'Mi Tienda',
+            productos_json: records
           }
         ]);
 
@@ -332,15 +302,14 @@ export async function POST(req: Request) {
       }
     }
 
-    // ==========================================================
+    // ========================================================
     // RESPUESTA
-    // ==========================================================
+    // ========================================================
 
     return NextResponse.json(
       {
         success: true,
-        total_productos:
-          records.length,
+        total_productos: records.length,
         message:
           'Catálogo subido y guardado correctamente.'
       },
@@ -349,21 +318,22 @@ export async function POST(req: Request) {
       }
     );
 
-  } catch (err: any) {
-
+  } catch (err: unknown) {
     console.error(
       'Error procesando CSV:',
       err
     );
 
+    const mensaje =
+      err instanceof Error
+        ? err.message
+        : 'Error desconocido';
+
     return NextResponse.json(
       {
         error:
           'Hubo un error al procesar el archivo: ' +
-          (
-            err?.message ||
-            'Error desconocido'
-          )
+          mensaje
       },
       {
         status: 500
