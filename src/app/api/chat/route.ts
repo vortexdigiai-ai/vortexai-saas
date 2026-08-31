@@ -14,13 +14,16 @@ export async function POST(req: NextRequest) {
 
     const body = await req.json()
 
-    const mensaje = body.mensaje
-    const tiendaId = body.tiendaId
-    const visitorId =
-      body.visitorId ||
-      body.visitor_id
+const mensaje = body.mensaje || ''
+const tiendaId = body.tiendaId
+const visitorId =
+  body.visitorId ||
+  body.visitor_id
 
-    if (!mensaje || !tiendaId) {
+const inicioWidget =
+  body.inicioWidget === true
+
+if ((!mensaje && !inicioWidget) || !tiendaId) {
       return NextResponse.json(
         {
           error: 'Falta mensaje o tiendaId'
@@ -306,6 +309,51 @@ REGLAS:
     }
 
     // ============================================================
+    // MENSAJE AUTOMÁTICO DE CARRITO ABANDONADO
+    // ============================================================
+
+    let recordatorioCarrito = ''
+
+    if (
+      inicioWidget &&
+      tienda.carrito_abandonado === true &&
+      carrito &&
+      carrito.estado === 'abandoned' &&
+      Array.isArray(carrito.items) &&
+      carrito.items.length > 0
+    ) {
+      recordatorioCarrito = `
+El cliente acaba de volver a la tienda.
+
+Tiene un carrito que abandonó anteriormente.
+
+Debes comenzar tu respuesta recordándole de forma natural que dejó productos en su carrito y ofrecerle continuar con la compra.
+
+Puedes utilizar los datos reales del carrito:
+
+Productos:
+${JSON.stringify(carrito.items)}
+
+Total:
+${carrito.total} ${carrito.currency}
+
+URL DEL CARRITO:
+${carrito.cart_url || 'No disponible'}
+
+IMPORTANTE:
+- No inventes productos.
+- No inventes descuentos.
+- No inventes códigos de cupón.
+- No inventes precios.
+- No inventes stock.
+- No afirmes que el pedido está reservado.
+- No afirmes que la compra ya se ha realizado.
+- Sé natural y no demasiado insistente.
+- Si existe una URL del carrito, puedes invitar al cliente a continuar con su compra.
+`
+    }
+
+    // ============================================================
     // FUNCIONES IA
     // ============================================================
 
@@ -378,6 +426,8 @@ ${instruccionesFunciones || 'No hay funciones IA avanzadas activadas.'}
 
 ${instruccionesCarrito}
 
+${recordatorioCarrito}
+
 IMPORTANTE:
 
 Solo puedes utilizar las funciones que aparecen en "FUNCIONES IA ACTIVADAS PARA ESTA TIENDA".
@@ -394,11 +444,14 @@ Nunca inventes información que no aparezca en los datos proporcionados.
 `,
 
         messages: [
-          {
-            role: 'user',
-            content: mensaje
-          }
-        ]
+  {
+    role: 'user',
+    content:
+      inicioWidget
+        ? 'El cliente acaba de entrar en la tienda. Saluda al cliente y, si tiene un carrito abandonado, recuérdaselo siguiendo las instrucciones proporcionadas.'
+        : mensaje
+  }
+]
 
       })
 
@@ -420,8 +473,16 @@ Nunca inventes información que no aparezca en los datos proporcionados.
     // ============================================================
 
     return NextResponse.json({
-      respuesta: textoRespuesta
-    })
+  respuesta: textoRespuesta,
+  carritoAbandonado:
+    carrito?.estado === 'abandoned' &&
+    Array.isArray(carrito.items) &&
+    carrito.items.length > 0,
+  carritoUrl:
+    carrito?.estado === 'abandoned'
+      ? carrito.cart_url || null
+      : null
+})
 
   } catch (err: any) {
 

@@ -230,6 +230,64 @@ export default function ChatWidget({ tiendaId }: { tiendaId?: number | string })
 
   }, [cargarConfiguracion])
 
+    // ============================================================
+  // COMPROBAR CARRITO ABANDONADO AL ENTRAR
+  // ============================================================
+
+    useEffect(() => {
+    if (!idActual) return
+
+    const comprobarCarritoAbandonado = async () => {
+      try {
+        const visitorId =
+          typeof window !== 'undefined'
+            ? localStorage.getItem('vortexai_visitor_id')
+            : null
+
+        if (!visitorId) return
+
+        const res = await fetch('/api/chat', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            mensaje: '',
+            tiendaId: idActual,
+            visitorId: visitorId,
+            inicioWidget: true
+          })
+        })
+
+        if (!res.ok) return
+
+        const data = await res.json()
+
+        if (
+          data.carritoAbandonado === true &&
+          data.respuesta
+        ) {
+          setMensajes((prev) => [
+            ...prev,
+            {
+              rol: 'bot',
+              texto: data.respuesta
+            }
+          ])
+
+          setAbierto(true)
+        }
+      } catch (error) {
+        console.error(
+          'VortexAI: error comprobando carrito abandonado:',
+          error
+        )
+      }
+    }
+
+    comprobarCarritoAbandonado()
+  }, [idActual])
+
   // ============================================================
   // RECIBIR VISITOR ID DESDE widget.js
   // ============================================================
