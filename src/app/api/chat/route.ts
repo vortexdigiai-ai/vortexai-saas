@@ -2,9 +2,22 @@ import Anthropic from '@anthropic-ai/sdk'
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
 
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type',
+}
+
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
 })
+
+export async function OPTIONS() {
+  return new NextResponse(null, {
+    status: 204,
+    headers: corsHeaders,
+  })
+}
 
 export async function POST(req: NextRequest) {
   try {
@@ -472,17 +485,23 @@ Nunca inventes información que no aparezca en los datos proporcionados.
     // RESPUESTA
     // ============================================================
 
-    return NextResponse.json({
-  respuesta: textoRespuesta,
-  carritoAbandonado:
-    carrito?.estado === 'abandoned' &&
-    Array.isArray(carrito.items) &&
-    carrito.items.length > 0,
-  carritoUrl:
-    carrito?.estado === 'abandoned'
-      ? carrito.cart_url || null
-      : null
-})
+    return NextResponse.json(
+  {
+    respuesta: textoRespuesta,
+    carritoAbandonado:
+      carrito?.estado === 'abandoned' &&
+      Array.isArray(carrito.items) &&
+      carrito.items.length > 0,
+    carritoUrl:
+      carrito?.estado === 'abandoned'
+        ? carrito.cart_url || null
+        : null
+  },
+  {
+    status: 200,
+    headers: corsHeaders,
+  }
+)
 
   } catch (err: any) {
 
@@ -492,14 +511,15 @@ Nunca inventes información que no aparezca en los datos proporcionados.
     )
 
     return NextResponse.json(
-      {
-        error:
-          err.message ||
-          'Error interno del servidor'
-      },
-      {
-        status: 500
-      }
-    )
+  {
+    error:
+      err.message ||
+      'Error interno del servidor'
+  },
+  {
+    status: 500,
+    headers: corsHeaders,
+  }
+)
   }
 }
