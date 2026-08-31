@@ -383,47 +383,46 @@ useEffect(() => {
   // ============================================================
 
   useEffect(() => {
+  if (!exitIntent) return
 
-    if (!exitIntent) {
-      return
+  const detectarExitIntent = (event: MouseEvent) => {
+
+    // Evitar que se dispare más de una vez
+    if (exitIntentDisparado.current) return
+
+    // Detectar cuando el cursor se acerca a la parte
+    // superior de la pantalla
+    if (event.clientY <= 10) {
+
+      exitIntentDisparado.current = true
+
+      // Abrir chatbot
+      setAbierto(true)
+
+      // Añadir mensaje específico de Exit Intent
+      setMensajes((prev) => [
+        ...prev,
+        {
+          rol: 'bot',
+          texto:
+            '¡Espera! 👋 ¿Te puedo ayudar con algo antes de que te vayas?'
+        }
+      ])
     }
+  }
 
-    const detectarExitIntent = (
-      event: MouseEvent
-    ) => {
+  document.addEventListener(
+    'mousemove',
+    detectarExitIntent
+  )
 
-      if (
-        exitIntentDisparado.current
-      ) {
-        return
-      }
-
-      if (event.clientY <= 10) {
-
-        exitIntentDisparado.current =
-          true
-
-        setAbierto(true)
-
-      }
-
-    }
-
-    document.addEventListener(
+  return () => {
+    document.removeEventListener(
       'mousemove',
       detectarExitIntent
     )
-
-    return () => {
-
-      document.removeEventListener(
-        'mousemove',
-        detectarExitIntent
-      )
-
-    }
-
-  }, [exitIntent])
+  }
+}, [exitIntent])
 
   // ============================================================
   // SCROLL AUTOMÁTICO
