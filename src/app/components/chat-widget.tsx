@@ -42,6 +42,33 @@ export default function ChatWidget({ tiendaId }: { tiendaId?: number | string })
   const [input, setInput] = useState('')
   const [cargando, setCargando] = useState(false)
 
+  // ============================================================
+  // ESTADO DE REGLAS DE ESCAPE / HANDOVER
+  // ============================================================
+
+  const [fallbackIntentos, setFallbackIntentos] = useState(0)
+
+  const [handover, setHandover] = useState<{
+    action:
+      | 'formulario'
+      | 'whatsapp'
+      | 'email'
+    whatsappUrl?: string | null
+    emailUrl?: string | null
+  } | null>(null)
+
+  const [formHandover, setFormHandover] = useState({
+    nombre: '',
+    email: '',
+    mensaje: ''
+  })
+
+  const [enviandoHandover, setEnviandoHandover] =
+    useState(false)
+
+  const [handoverEnviado, setHandoverEnviado] =
+    useState(false)
+
   const finRef = useRef<HTMLDivElement>(null)
 
   const carritoComprobado = useRef(false)
@@ -383,46 +410,47 @@ useEffect(() => {
   // ============================================================
 
   useEffect(() => {
-  if (!exitIntent) return
 
-  const detectarExitIntent = (event: MouseEvent) => {
-
-    // Evitar que se dispare más de una vez
-    if (exitIntentDisparado.current) return
-
-    // Detectar cuando el cursor se acerca a la parte
-    // superior de la pantalla
-    if (event.clientY <= 10) {
-
-      exitIntentDisparado.current = true
-
-      // Abrir chatbot
-      setAbierto(true)
-
-      // Añadir mensaje específico de Exit Intent
-      setMensajes((prev) => [
-        ...prev,
-        {
-          rol: 'bot',
-          texto:
-            '¡Espera! 👋 ¿Te puedo ayudar con algo antes de que te vayas?'
-        }
-      ])
+    if (!exitIntent) {
+      return
     }
-  }
 
-  document.addEventListener(
-    'mousemove',
-    detectarExitIntent
-  )
+    const detectarExitIntent = (
+      event: MouseEvent
+    ) => {
 
-  return () => {
-    document.removeEventListener(
+      if (
+        exitIntentDisparado.current
+      ) {
+        return
+      }
+
+      if (event.clientY <= 10) {
+
+        exitIntentDisparado.current =
+          true
+
+        setAbierto(true)
+
+      }
+
+    }
+
+    document.addEventListener(
       'mousemove',
       detectarExitIntent
     )
-  }
-}, [exitIntent])
+
+    return () => {
+
+      document.removeEventListener(
+        'mousemove',
+        detectarExitIntent
+      )
+
+    }
+
+  }, [exitIntent])
 
   // ============================================================
   // SCROLL AUTOMÁTICO
@@ -451,7 +479,7 @@ useEffect(() => {
     }
 
     const mensajeUsuario =
-      input
+      input.trim()
 
     setMensajes((prev) => [
       ...prev,
@@ -463,37 +491,42 @@ useEffect(() => {
 
     setInput('')
     setCargando(true)
+    setHandover(null)
+    setHandoverEnviado(false)
 
     try {
 
-      const res = await fetch(
-        '/api/chat',
-        {
-          method: 'POST',
-
-          headers: {
-            'Content-Type':
-              'application/json'
-          },
-
-          body: JSON.stringify({
-            mensaje:
-              mensajeUsuario,
-
-            tiendaId:
-              idActual,
-
-            // NUEVO:
-            // enviamos el visitante
-            // identificado por widget.js
-            visitorId:
-              visitorId
-          }),
-        }
-      )
+      const res =
+        await fetch(
+          '/api/chat',
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type':
+                'application/json'
+            },
+            body: JSON.stringify({
+              mensaje:
+                mensajeUsuario,
+              tiendaId:
+                idActual,
+              visitorId:
+                visitorId,
+              fallbackIntentos:
+                fallbackIntentos
+            })
+          }
+        )
 
       const data =
         await res.json()
+
+      if (!res.ok) {
+        throw new Error(
+          data.error ||
+          'Error del servidor'
+        )
+      }
 
       setMensajes((prev) => [
         ...prev,
@@ -501,12 +534,38 @@ useEffect(() => {
           rol: 'bot',
           texto:
             data.respuesta ||
-            data.error ||
             'Lo siento, ha ocurrido un error.'
-        },
+        }
       ])
 
-    } catch {
+      setFallbackIntentos(
+        Number(
+          data.fallbackIntentos || 0
+        )
+      )
+
+      if (data.handover === true) {
+        setHandover({
+          action:
+            data.handoverAction ||
+            'formulario',
+          whatsappUrl:
+            data.whatsappUrl ||
+            null,
+          emailUrl:
+            data.emailUrl ||
+            null
+        })
+      } else {
+        setHandover(null)
+      }
+
+    } catch (error) {
+
+      console.error(
+        'VortexAI: error enviando mensaje:',
+        error
+      )
 
       setMensajes((prev) => [
         ...prev,
@@ -522,79 +581,191 @@ useEffect(() => {
       setCargando(false)
 
     }
-
   }
+
+  // ============================================================
+  // FORMULARIO DE HANDOVER
+  // ============================================================
+
+  async function enviarFormularioHandover(
+    e: React.FormEvent
+  ) {
+
+    e.preventDefault()
+
+    if (
+      !formHandover.nombre.trim() ||
+      !formHandover.email.trim() ||
+      !formHandover.mensaje.trim()
+    ) {
+      return
+    }
+
+    setEnviandoHandover(true)
+
+    try {
+
+      const res =
+        await fetch(
+          '/api/handover-lead',
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type':
+                'application/json'
+            },
+            body: JSON.stringify({
+              tiendaId:
+                idActual,
+              visitorId:
+                visitorId,
+              nombre:
+                formHandover.nombre.trim(),
+              email:
+                formHandover.email.trim(),
+              mensaje:
+                formHandover.mensaje.trim()
+            })
+          }
+        )
+
+      const data =
+        await res.json()
+
+      if (!res.ok) {
+        throw new Error(
+          data.error ||
+          'No se pudo enviar el formulario'
+        )
+      }
+
+      setHandoverEnviado(true)
+
+      setMensajes((prev) => [
+        ...prev,
+        {
+          rol: 'bot',
+          texto:
+            '✅ Hemos recibido tus datos. El equipo de la tienda podrá ponerse en contacto contigo.'
+        }
+      ])
+
+      setFormHandover({
+        nombre: '',
+        email: '',
+        mensaje: ''
+      })
+
+    } catch (error) {
+
+      console.error(
+        'VortexAI: error enviando formulario:',
+        error
+      )
+
+      setMensajes((prev) => [
+        ...prev,
+        {
+          rol: 'bot',
+          texto:
+            'No hemos podido enviar tus datos ahora mismo. Inténtalo de nuevo.'
+        }
+      ])
+
+    } finally {
+
+      setEnviandoHandover(false)
+
+    }
+  }
+
+    // ============================================================
+  // POSICIÓN DEL WIDGET
+  // ============================================================
+
+  const posicionContenedor =
+    posicion === 'izquierda'
+      ? 'fixed bottom-4 left-4'
+      : 'fixed bottom-4 right-4'
+
+  const posicionVentana =
+    posicion === 'izquierda'
+      ? 'left-0'
+      : 'right-0'
 
   // ============================================================
   // AVATAR
   // ============================================================
 
   const renderAvatarContent = (
-    esCabecera = false
+    pequeno: boolean
   ) => {
 
-    if (
-      avatarUrl.startsWith('http://') ||
-      avatarUrl.startsWith('https://')
-    ) {
+    const tamano =
+      pequeno
+        ? 'w-7 h-7'
+        : 'w-8 h-8'
 
+    // Si avatar_url contiene una URL de imagen
+    if (
+      avatarUrl &&
+      (
+        avatarUrl.startsWith('http://') ||
+        avatarUrl.startsWith('https://')
+      )
+    ) {
       return (
         <img
           src={avatarUrl}
           alt="Avatar"
-          className={`${
-            esCabecera
-              ? 'w-6 h-6'
-              : 'w-full h-full'
-          } rounded-full object-cover bg-white`}
+          className={`${tamano} rounded-full object-cover`}
         />
       )
-
     }
 
-    if (avatarUrl === 'sparkle') {
+    // Avatares predeterminados
+    switch (
+      avatarUrl.toLowerCase()
+    ) {
 
-      return (
-        <span
-          className={
-            esCabecera
-              ? 'text-base'
-              : 'text-2xl'
-          }
-        >
-          ✨
-        </span>
-      )
+      case 'moderno':
+        return (
+          <div
+            className={`${tamano} rounded-full bg-white/20 flex items-center justify-center`}
+          >
+            🤖
+          </div>
+        )
 
+      case 'minimalista':
+        return (
+          <div
+            className={`${tamano} rounded-full bg-white/20 flex items-center justify-center`}
+          >
+            ✨
+          </div>
+        )
+
+      case 'tienda':
+        return (
+          <div
+            className={`${tamano} rounded-full bg-white/20 flex items-center justify-center`}
+          >
+            🛍️
+          </div>
+        )
+
+      default:
+        return (
+          <div
+            className={`${tamano} rounded-full bg-white/20 flex items-center justify-center`}
+          >
+            🤖
+          </div>
+        )
     }
-
-    return (
-      <span
-        className={
-          esCabecera
-            ? 'text-base'
-            : 'text-2xl'
-        }
-      >
-        🤖
-      </span>
-    )
-
   }
 
-  // ============================================================
-  // POSICIÓN
-  // ============================================================
-
-  const posicionContenedor =
-    posicion === 'izquierda'
-      ? 'fixed bottom-6 left-6'
-      : 'fixed bottom-6 right-6'
-
-  const posicionVentana =
-    posicion === 'izquierda'
-      ? 'left-0'
-      : 'right-0'
 
   // ============================================================
   // INTERFAZ
@@ -688,6 +859,150 @@ useEffect(() => {
           {/* ==================================================
               INPUT
           ================================================== */}
+
+          {handover && !handoverEnviado && (
+            <div className="bg-white border-t border-gray-200 p-3 space-y-2">
+
+              {handover.action === 'whatsapp' && (
+                <div className="space-y-2">
+                  <p className="text-xs text-gray-700">
+                    Si necesitas ayuda de una persona, puedes contactar directamente con soporte.
+                  </p>
+
+                  {handover.whatsappUrl ? (
+                    <a
+                      href={handover.whatsappUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="block w-full text-center text-white px-3 py-2 rounded-xl text-sm font-medium"
+                      style={{
+                        backgroundColor:
+                          colorPrimario
+                      }}
+                    >
+                      📱 Contactar por WhatsApp
+                    </a>
+                  ) : (
+                    <p className="text-xs text-red-500">
+                      El WhatsApp de soporte todavía no está configurado.
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {handover.action === 'email' && (
+                <div className="space-y-2">
+                  <p className="text-xs text-gray-700">
+                    Puedes contactar directamente con el equipo de soporte.
+                  </p>
+
+                  {handover.emailUrl ? (
+                    <a
+                      href={handover.emailUrl}
+                      className="block w-full text-center text-white px-3 py-2 rounded-xl text-sm font-medium"
+                      style={{
+                        backgroundColor:
+                          colorPrimario
+                      }}
+                    >
+                      ✉️ Contactar por email
+                    </a>
+                  ) : (
+                    <p className="text-xs text-red-500">
+                      El email de soporte todavía no está configurado.
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {handover.action === 'formulario' && (
+                <form
+                  onSubmit={
+                    enviarFormularioHandover
+                  }
+                  className="space-y-2"
+                >
+                  <p className="text-xs font-medium text-gray-800">
+                    Déjanos tus datos y el equipo podrá ayudarte.
+                  </p>
+
+                  <input
+                    type="text"
+                    required
+                    value={
+                      formHandover.nombre
+                    }
+                    onChange={(e) =>
+                      setFormHandover(
+                        (prev) => ({
+                          ...prev,
+                          nombre:
+                            e.target.value
+                        })
+                      )
+                    }
+                    placeholder="Tu nombre"
+                    className="w-full border border-gray-300 rounded-xl px-3 py-2 text-xs focus:outline-none"
+                  />
+
+                  <input
+                    type="email"
+                    required
+                    value={
+                      formHandover.email
+                    }
+                    onChange={(e) =>
+                      setFormHandover(
+                        (prev) => ({
+                          ...prev,
+                          email:
+                            e.target.value
+                        })
+                      )
+                    }
+                    placeholder="Tu email"
+                    className="w-full border border-gray-300 rounded-xl px-3 py-2 text-xs focus:outline-none"
+                  />
+
+                  <textarea
+                    required
+                    rows={2}
+                    value={
+                      formHandover.mensaje
+                    }
+                    onChange={(e) =>
+                      setFormHandover(
+                        (prev) => ({
+                          ...prev,
+                          mensaje:
+                            e.target.value
+                        })
+                      )
+                    }
+                    placeholder="¿En qué podemos ayudarte?"
+                    className="w-full border border-gray-300 rounded-xl px-3 py-2 text-xs focus:outline-none resize-none"
+                  />
+
+                  <button
+                    type="submit"
+                    disabled={
+                      enviandoHandover
+                    }
+                    className="w-full text-white px-3 py-2 rounded-xl text-sm font-medium disabled:opacity-50"
+                    style={{
+                      backgroundColor:
+                        colorPrimario
+                    }}
+                  >
+                    {enviandoHandover
+                      ? 'Enviando...'
+                      : 'Enviar mis datos'}
+                  </button>
+                </form>
+              )}
+
+            </div>
+          )}
 
           <form
             onSubmit={enviarMensaje}

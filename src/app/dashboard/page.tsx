@@ -182,6 +182,7 @@ const [isTyping, setIsTyping] = useState(false)
 // Estados para Flujos Híbridos y Reglas de Escape
 const [accionFallback, setAccionFallback] = useState('formulario'); // 'formulario' | 'whatsapp' | 'email'
 const [whatsappSoporte, setWhatsappSoporte] = useState('');
+const [emailSoporte, setEmailSoporte] = useState('');
 const [umbralFrustracion, setUmbralFrustracion] = useState('2'); // Intentos antes de derivar
 const [mensajeFallback, setMensajeFallback] = useState('Vaya, parece que no tengo esa información exacta. Déjanos tus datos y un especialista humano te contactará de inmediato.');
 
@@ -255,6 +256,14 @@ if (data) {
 setTiemposEnvio(data.tiempos_envio || '')
 setPoliticas(data.politicas || '')
 setFaqs(data.faqs || '')
+setAccionFallback(data.accion_fallback || 'formulario')
+setWhatsappSoporte(data.whatsapp_soporte || '')
+setEmailSoporte(data.email_soporte || '')
+setUmbralFrustracion(String(data.umbral_frustracion || 2))
+setMensajeFallback(
+  data.mensaje_fallback ||
+  'Vaya, parece que no tengo esa información exacta. Déjanos tus datos y un especialista humano te contactará de inmediato.'
+)
 setExitIntent(data.exit_intent || false)
 setRecomendador(data.recomendador ?? true)
 setModoPersuasivo(data.modo_persuasivo || false)
@@ -343,6 +352,13 @@ const guardarConfiguracion = async () => {
         tiempos_envio: tiemposEnvio,
         politicas: politicas,
         faqs: faqs,
+
+        // FLUJOS HÍBRIDOS Y REGLAS DE ESCAPE
+        accion_fallback: accionFallback,
+        whatsapp_soporte: whatsappSoporte,
+        email_soporte: emailSoporte,
+        umbral_frustracion: Number(umbralFrustracion),
+        mensaje_fallback: mensajeFallback,
 
         // FUNCIONES IA
         detector_idioma: detectorIdioma,
@@ -1103,6 +1119,19 @@ className="toggle accent-rose-500 cursor-pointer h-5 w-5 disabled:cursor-not-all
               value={whatsappSoporte}
               onChange={(e) => setWhatsappSoporte(e.target.value)}
               placeholder="Ej: +34600000000"
+              className="w-full bg-zinc-900 border border-zinc-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-rose-500"
+            />
+          </div>
+        )}
+
+        {accionFallback === 'email' && (
+          <div>
+            <label className="block text-xs font-medium text-gray-300 mb-1">Email de Soporte</label>
+            <input
+              type="email"
+              value={emailSoporte}
+              onChange={(e) => setEmailSoporte(e.target.value)}
+              placeholder="Ej: soporte@mitienda.com"
               className="w-full bg-zinc-900 border border-zinc-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-rose-500"
             />
           </div>
