@@ -829,14 +829,6 @@ minPlan: 'pro',
 checked: analisisSentimiento,
 onChange: setAnalisisSentimiento
 },
-{
-id: 'cupones_flash',
-title: '🎁 Generador Dinámico de Cupones',
-desc: 'Ofrece cupones temporales si detecta dudas en el checkout.',
-minPlan: 'pro',
-checked: cuponesFlash,
-onChange: setCuponesFlash
-},
 ];
 return (
 <div className="max-w-5xl mx-auto p-6 text-white">
