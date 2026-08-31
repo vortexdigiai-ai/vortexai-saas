@@ -427,12 +427,21 @@ useEffect(() => {
 
       if (event.clientY <= 10) {
 
-        exitIntentDisparado.current =
-          true
+  exitIntentDisparado.current =
+    true
 
-        setAbierto(true)
+  setMensajes((prev) => [
+    ...prev,
+    {
+      rol: 'bot',
+      texto:
+        '¡Espera! 👋 ¿Necesitas ayuda antes de irte? Estoy aquí para ayudarte con cualquier duda sobre nuestros productos.'
+    }
+  ])
 
-      }
+  setAbierto(true)
+
+}
 
     }
 
