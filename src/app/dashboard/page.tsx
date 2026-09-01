@@ -1,6 +1,7 @@
 'use client'
 import { useState, useEffect } from 'react'
 import CatalogoForm from './catalogo-form'
+import ChatWidget from '@/app/components/chat-widget'
 import { supabase } from '@/lib/supabase'
 import {
 Sparkles,
@@ -64,7 +65,12 @@ const [faqs, setFaqs] = useState('')
 const [archivoCSV, setArchivoCSV] = useState<File | null>(null);
 const [subiendoCSV, setSubiendoCSV] = useState(false);
 const [mensajeCSV, setMensajeCSV] = useState('');
-
+// Estados del chat de prueba del Overview
+const [inputChat, setInputChat] = useState('');
+const [chatMensajes, setChatMensajes] = useState<
+  { remitente: 'user' | 'ai'; texto: string }[]
+>([]);
+const [isTyping, setIsTyping] = useState(false);
 const [urlTienda, setUrlTienda] = useState('');
 const [extrayendoWeb, setExtrayendoWeb] = useState(false);
 const [mensajeWeb, setMensajeWeb] = useState('');
@@ -117,20 +123,9 @@ const subirCSV = async () => {
   }
 };
 
-// ============================================================
-// EXTRAER CATÁLOGO DESDE LA URL DE LA TIENDA
-// ============================================================
-
 const extraerWeb = async () => {
-  const urlLimpia = urlTienda.trim();
-
-  if (!urlLimpia) {
+  if (!urlTienda.trim()) {
     setMensajeWeb('Introduce primero la URL de tu tienda.');
-    return;
-  }
-
-  if (!userId) {
-    setMensajeWeb('No se ha podido identificar tu cuenta. Recarga la página e inténtalo de nuevo.');
     return;
   }
 
@@ -138,63 +133,50 @@ const extraerWeb = async () => {
   setMensajeWeb('');
 
   try {
+    let url = urlTienda.trim();
+
+    if (!url.startsWith('http://') && !url.startsWith('https://')) {
+      url = `https://${url}`;
+    }
+
     const response = await fetch('/api/import-url', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        url: urlLimpia,
-        user_id: userId,
+        url,
+        user_id: String(userId),
       }),
     });
 
-    let data: any = null;
-
-    try {
-      data = await response.json();
-    } catch {
-      data = null;
-    }
+    const data = await response.json();
 
     if (!response.ok) {
       setMensajeWeb(
-        data?.error ||
-        'No se pudo extraer el catálogo de la tienda.'
+        data.error || 'No se pudieron extraer los productos.'
       );
       return;
     }
 
-    const total =
-      Number(data?.total_productos) || 0;
-
     setMensajeWeb(
-      total > 0
-        ? `¡Éxito! Se han extraído y guardado ${total} productos.`
-        : 'La extracción ha terminado, pero no se encontraron productos.'
+      `¡Éxito! Se han extraído ${data.total_productos || 0} productos.`
     );
 
   } catch (error) {
     console.error(
-      'VortexAI: error extrayendo catálogo desde URL:',
+      'VortexAI: error extrayendo tienda:',
       error
     );
 
     setMensajeWeb(
-      'Error de conexión con el servidor. Comprueba la URL e inténtalo de nuevo.'
+      'Error de conexión con el servidor.'
     );
+
   } finally {
     setExtrayendoWeb(false);
   }
 };
-
-// Estados y función para el simulador del chat
-const [chatMensajes, setChatMensajes] = useState<Array<{ remitente:
-'user' | 'ai', texto: string }>>([
-{ remitente: 'ai', texto: '¡Hola! 👋 Soy el asistente virtual de tu tienda. Pregúntame sobre envíos, políticas o productos disponibles.' }
-])
-const [inputChat, setInputChat] = useState('')
-const [isTyping, setIsTyping] = useState(false)
 
 // Estados para Flujos Híbridos y Reglas de Escape
 const [accionFallback, setAccionFallback] = useState('formulario'); // 'formulario' | 'whatsapp' | 'email'
@@ -206,6 +188,7 @@ const [mensajeFallback, setMensajeFallback] = useState('Vaya, parece que no teng
 const [chatsHoy, setChatsHoy] = useState(0)
 const [guardandoConfig, setGuardandoConfig] = useState(false)
 const [userId, setUserId] = useState<string>('')
+const [cargandoDatos, setCargandoDatos] = useState(true)
 
 // Estados de Logs que faltaban por declarar (para solucionar el error de TypeScript)
 const [cargandoLogs, setCargandoLogs] = useState(false)
@@ -356,6 +339,11 @@ const guardarConfiguracion = async () => {
         posicion: posicionWidget,
         avatar_url: avatarFinal,
 
+        // POLÍTICAS Y BASE DE CONOCIMIENTO
+        tiempos_envio: tiemposEnvio,
+        politicas: politicas,
+        faqs: faqs,
+
         // FUNCIONES IA
         detector_idioma: detectorIdioma,
         exit_intent: exitIntent,
@@ -393,128 +381,508 @@ const guardarConfiguracion = async () => {
     setGuardandoConfig(false);
   }
 };
-// Estados y lógica de Analíticas
-const [rangoFechas, setRangoFechas] = useState('7d');
+// ============================================================
+// ANALÍTICAS REALES
+// ============================================================
+
+const [rangoFechas, setRangoFechas] = useState('7d')
+
 const [metricasReales, setMetricasReales] = useState({
   totalChats: 0,
-  tasaResolucion: '95.2%',
+  tasaResolucion: '0%',
   mensajesProcesados: 0,
-  leadsCustom: 3
-});
+  visitantesUnicos: 0,
+  consultasNoResueltas: 0,
+  conversacionesResueltas: 0,
+  variacionChats: null as number | null,
+  variacionMensajes: null as number | null,
+  variacionResolucion: null as number | null,
+})
+
 const [productosFrecuentes, setProductosFrecuentes] = useState([
-  { nombre: 'Cargando datos del catálogo...', consultas: '0 preguntas', porcentaje: '0%' }
-]);
-const [cargandoDatos, setCargandoDatos] = useState(true);
+  {
+    nombre: 'Sin datos todavía',
+    consultas: '0 consultas',
+    porcentaje: '0%',
+  },
+])
+
+const [cargandoAnaliticas, setCargandoAnaliticas] = useState(true)
+
+const calcularVariacion = (
+  actual: number,
+  anterior: number
+): number | null => {
+  if (anterior === 0) {
+    return actual > 0 ? null : 0
+  }
+
+  return Math.round(
+    ((actual - anterior) / anterior) * 1000
+  ) / 10
+}
+
+const obtenerEtiquetaVariacion = (
+  variacion: number | null,
+  tipo: 'porcentaje' | 'puntos' = 'porcentaje'
+) => {
+  if (variacion === null) {
+    return 'Nuevo'
+  }
+
+  if (variacion === 0) {
+    return 'Sin cambios'
+  }
+
+  const signo = variacion > 0 ? '+' : ''
+
+  return tipo === 'puntos'
+    ? `${signo}${variacion.toFixed(1)} pp`
+    : `${signo}${variacion.toFixed(1)}%`
+}
 
 useEffect(() => {
+  let activo = true
+
   async function obtenerAnaliticasAvanzadas() {
-    try {
-      setCargandoDatos(true);
-      const { data, count, error } = await supabase
-        .from('interacciones_chat')
-        .select('*', { count: 'exact' })
-        .eq('user_id', userId)
-        .order('created_at', { ascending: false });
-
-      if (!error && data) {
-        const totalMsgs = count || data.length;
-        const chatsUnicos = Math.ceil(totalMsgs / 2);
-
-        setMetricasReales({
-          totalChats: chatsUnicos,
-          tasaResolucion: '95.2%',
-          mensajesProcesados: totalMsgs,
-          leadsCustom: Math.floor(chatsUnicos * 0.15)
-        });
-
-        const conteoTemas: { [key: string]: number } = {
-          'Consultas Generales de Catálogo': 0,
-          'Envíos y Plazos de Entrega': 0,
-          'Políticas de Devolución': 0,
-          'Precios y Descuentos': 0
-        };
-
-        data.forEach((item: any) => {
-          const txt = (item.texto || '').toLowerCase();
-          if (txt.includes('envío') || txt.includes('tard') || txt.includes('llega')) {
-            conteoTemas['Envíos y Plazos de Entrega']++;
-          } else if (txt.includes('devolv') || txt.includes('cambio') || txt.includes('devolución')) {
-            conteoTemas['Políticas de Devolución']++;
-          } else if (txt.includes('precio') || txt.includes('cupon') || txt.includes('descuento')) {
-            conteoTemas['Precios y Descuentos']++;
-          } else {
-            conteoTemas['Consultas Generales de Catálogo']++;
-          }
-        });
-
-        const listaProcesada = Object.keys(conteoTemas).map((tema) => {
-          const cantidad = conteoTemas[tema];
-          const maxVal = Math.max(...Object.values(conteoTemas), 1);
-          const porcentajeNum = Math.round((cantidad / maxVal) * 100);
-          return {
-            nombre: tema,
-            consultas: `${cantidad} interacciones`,
-            porcentaje: `${Math.max(porcentajeNum, 10)}%`
-          };
-        });
-
-        setProductosFrecuentes(listaProcesada);
+    if (!userId) {
+      if (activo) {
+        setCargandoAnaliticas(false)
       }
+      return
+    }
+
+    try {
+      setCargandoAnaliticas(true)
+
+      const ahora = new Date()
+
+      const duracionPeriodo =
+        rangoFechas === '24h'
+          ? 24 * 60 * 60 * 1000
+          : rangoFechas === '30d'
+            ? 30 * 24 * 60 * 60 * 1000
+            : 7 * 24 * 60 * 60 * 1000
+
+      const inicioPeriodoActual = new Date(
+        ahora.getTime() - duracionPeriodo
+      )
+
+      const inicioPeriodoAnterior = new Date(
+        inicioPeriodoActual.getTime() - duracionPeriodo
+      )
+
+      const { data, error } = await supabase
+        .from('interacciones_chat')
+        .select(
+          'id, created_at, conversation_id, visitor_id, remitente, texto, resuelta'
+        )
+        .eq('user_id', userId)
+        .gte(
+          'created_at',
+          inicioPeriodoAnterior.toISOString()
+        )
+        .order('created_at', {
+          ascending: false,
+        })
+        .limit(5000)
+
+      if (error) {
+        throw error
+      }
+
+      if (!activo) return
+
+      const filas = data || []
+
+      const filasActuales = filas.filter(
+        (item: any) =>
+          new Date(item.created_at).getTime() >=
+          inicioPeriodoActual.getTime()
+      )
+
+      const filasAnteriores = filas.filter(
+        (item: any) =>
+          new Date(item.created_at).getTime() >=
+          inicioPeriodoAnterior.getTime() &&
+          new Date(item.created_at).getTime() <
+          inicioPeriodoActual.getTime()
+      )
+
+      // ========================================================
+      // CONVERSACIONES ÚNICAS
+      // ========================================================
+
+      const obtenerConversaciones = (
+        registros: any[]
+      ) =>
+        new Set(
+          registros
+            .map((item: any) => item.conversation_id)
+            .filter(Boolean)
+            .map((id: any) => String(id))
+        )
+
+      const conversacionesActuales =
+        obtenerConversaciones(filasActuales)
+
+      const conversacionesAnteriores =
+        obtenerConversaciones(filasAnteriores)
+
+      const totalChats =
+        conversacionesActuales.size
+
+      const chatsAnteriores =
+        conversacionesAnteriores.size
+
+      // ========================================================
+      // RESOLUCIÓN REAL
+      // ========================================================
+
+      const obtenerResolucion = (
+        registros: any[]
+      ) => {
+        const ultimaResolucion =
+          new Map<string, boolean>()
+
+        registros
+          .filter(
+            (item: any) =>
+              item.conversation_id &&
+              item.remitente === 'ai' &&
+              typeof item.resuelta === 'boolean'
+          )
+          .sort(
+            (a: any, b: any) =>
+              new Date(b.created_at).getTime() -
+              new Date(a.created_at).getTime()
+          )
+          .forEach((item: any) => {
+            const id = String(
+              item.conversation_id
+            )
+
+            if (!ultimaResolucion.has(id)) {
+              ultimaResolucion.set(
+                id,
+                item.resuelta === true
+              )
+            }
+          })
+
+        const resueltas =
+          Array.from(
+            ultimaResolucion.values()
+          ).filter(Boolean).length
+
+        const conversacionesConEstado =
+          ultimaResolucion.size
+
+        return {
+          resueltas,
+          conversacionesConEstado,
+        }
+      }
+
+      const resolucionActual =
+        obtenerResolucion(filasActuales)
+
+      const resolucionAnterior =
+        obtenerResolucion(filasAnteriores)
+
+      const tasaResolucion =
+        totalChats > 0 &&
+        resolucionActual.conversacionesConEstado > 0
+          ? Math.round(
+              (
+                resolucionActual.resueltas /
+                totalChats
+              ) * 1000
+            ) / 10
+          : 0
+
+      const tasaResolucionAnterior =
+        chatsAnteriores > 0 &&
+        resolucionAnterior.conversacionesConEstado > 0
+          ? Math.round(
+              (
+                resolucionAnterior.resueltas /
+                chatsAnteriores
+              ) * 1000
+            ) / 10
+          : 0
+
+      const mensajesActuales =
+        filasActuales.length
+
+      const mensajesAnteriores =
+        filasAnteriores.length
+
+      const visitantesUnicos =
+        new Set(
+          filasActuales
+            .map((item: any) => item.visitor_id)
+            .filter(Boolean)
+            .map((id: any) => String(id))
+        ).size
+
+      const consultasNoResueltas =
+        Math.max(
+          totalChats -
+          resolucionActual.resueltas,
+          0
+        )
+
+      setMetricasReales({
+        totalChats,
+        tasaResolucion:
+          `${tasaResolucion.toFixed(1)}%`,
+        mensajesProcesados:
+          mensajesActuales,
+        visitantesUnicos,
+        consultasNoResueltas,
+        conversacionesResueltas:
+          resolucionActual.resueltas,
+        variacionChats:
+          calcularVariacion(
+            totalChats,
+            chatsAnteriores
+          ),
+        variacionMensajes:
+          calcularVariacion(
+            mensajesActuales,
+            mensajesAnteriores
+          ),
+        variacionResolucion:
+          Math.round(
+            (
+              tasaResolucion -
+              tasaResolucionAnterior
+            ) * 10
+          ) / 10,
+      })
+
+      // ========================================================
+      // TEMAS MÁS CONSULTADOS
+      // ========================================================
+
+      const conteoTemas: {
+        [key: string]: number
+      } = {
+        'Consultas de Productos': 0,
+        'Envíos y Plazos de Entrega': 0,
+        'Políticas de Devolución': 0,
+        'Precios y Descuentos': 0,
+      }
+
+      filasActuales
+        .filter(
+          (item: any) =>
+            item.remitente === 'user' ||
+            item.remitente === 'usuario' ||
+            item.remitente === 'cliente'
+        )
+        .forEach((item: any) => {
+          const txt = String(
+            item.texto || ''
+          )
+            .toLowerCase()
+            .normalize('NFD')
+            .replace(
+              /[\u0300-\u036f]/g,
+              ''
+            )
+
+          if (
+            txt.includes('envio') ||
+            txt.includes('tard') ||
+            txt.includes('llega') ||
+            txt.includes('entrega') ||
+            txt.includes('plazo')
+          ) {
+            conteoTemas[
+              'Envíos y Plazos de Entrega'
+            ]++
+          } else if (
+            txt.includes('devolv') ||
+            txt.includes('cambio') ||
+            txt.includes('reembolso')
+          ) {
+            conteoTemas[
+              'Políticas de Devolución'
+            ]++
+          } else if (
+            txt.includes('precio') ||
+            txt.includes('cupon') ||
+            txt.includes('descuento') ||
+            txt.includes('coste') ||
+            txt.includes('cuanto vale')
+          ) {
+            conteoTemas[
+              'Precios y Descuentos'
+            ]++
+          } else {
+            conteoTemas[
+              'Consultas de Productos'
+            ]++
+          }
+        })
+
+      const maxTema = Math.max(
+        ...Object.values(conteoTemas),
+        1
+      )
+
+      const listaProcesada =
+        Object.entries(conteoTemas)
+          .sort(([, a], [, b]) => b - a)
+          .map(([tema, cantidad]) => ({
+            nombre: tema,
+            consultas:
+              `${cantidad} ${cantidad === 1 ? 'consulta' : 'consultas'}`,
+            porcentaje:
+              `${Math.round(
+                (cantidad / maxTema) * 100
+              )}%`,
+          }))
+
+      setProductosFrecuentes(
+        listaProcesada
+      )
     } catch (err) {
-      console.error("Error al cargar analíticas avanzadas:", err);
+      console.error(
+        'Error al cargar analíticas avanzadas:',
+        err
+      )
+
+      if (activo) {
+        setMetricasReales({
+          totalChats: 0,
+          tasaResolucion: '0%',
+          mensajesProcesados: 0,
+          visitantesUnicos: 0,
+          consultasNoResueltas: 0,
+          conversacionesResueltas: 0,
+          variacionChats: null,
+          variacionMensajes: null,
+          variacionResolucion: null,
+        })
+      }
     } finally {
-      setCargandoDatos(false);
+      if (activo) {
+        setCargandoAnaliticas(false)
+      }
     }
   }
 
-  if (userId) {
-    obtenerAnaliticasAvanzadas();
-  }
+  obtenerAnaliticasAvanzadas()
 
   const subscription = supabase
-    .channel('cambios-analiticas-avanzadas')
-    .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'interacciones_chat' }, () => {
-      if (userId) obtenerAnaliticasAvanzadas();
-    })
-    .subscribe();
+    .channel(
+      `cambios-analiticas-${userId}-${rangoFechas}`
+    )
+    .on(
+      'postgres_changes',
+      {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'interacciones_chat',
+        filter: `user_id=eq.${userId}`,
+      },
+      () => {
+        obtenerAnaliticasAvanzadas()
+      }
+    )
+    .subscribe()
 
   return () => {
-    supabase.removeChannel(subscription);
-  };
-}, [userId, rangoFechas]);
+    activo = false
+    supabase.removeChannel(subscription)
+  }
+}, [userId, rangoFechas])
 
 const descargarCSVReal = async () => {
   try {
     const { data, error } = await supabase
       .from('interacciones_chat')
-      .select('created_at, remitente, texto')
+      .select(
+        'created_at, conversation_id, visitor_id, remitente, texto, resuelta'
+      )
       .eq('user_id', userId)
-      .order('created_at', { ascending: false });
+      .order('created_at', {
+        ascending: false,
+      })
+      .limit(5000)
 
-    if (error || !data || data.length === 0) {
-      alert("No hay suficientes datos registrados todavía para exportar.");
-      return;
+    if (
+      error ||
+      !data ||
+      data.length === 0
+    ) {
+      alert(
+        'No hay suficientes datos registrados todavía para exportar.'
+      )
+      return
     }
 
-    let csvContent = "data:text/csv;charset=utf-8,Fecha,Remitente,Mensaje\n";
-    data.forEach((row: any) => {
-      const fechaLimpia = new Date(row.created_at).toLocaleString();
-      const textoLimpio = `"${(row.texto || '').replace(/"/g, '""')}"`;
-      csvContent += `${fechaLimpia},${row.remitente},${textoLimpio}\n`;
-    });
+    const escaparCSV = (
+      valor: unknown
+    ) =>
+      `"${String(valor ?? '')
+        .replace(/"/g, '""')}"`
 
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement("a");
-    link.setAttribute("href", encodedUri);
-    link.setAttribute("download", `vortex_analiticas_chats_${new Date().toISOString().slice(0, 10)}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    let csvContent =
+      'data:text/csv;charset=utf-8,Fecha,Conversación,Visitante,Remitente,Resuelta,Mensaje\\n'
+
+    data.forEach((row: any) => {
+      const fechaLimpia =
+        new Date(
+          row.created_at
+        ).toLocaleString()
+
+      csvContent += [
+        escaparCSV(fechaLimpia),
+        escaparCSV(row.conversation_id),
+        escaparCSV(row.visitor_id),
+        escaparCSV(row.remitente),
+        escaparCSV(row.resuelta),
+        escaparCSV(row.texto),
+      ].join(',') + '\\n'
+    })
+
+    const encodedUri = encodeURI(
+      csvContent
+    )
+
+    const link =
+      document.createElement('a')
+
+    link.setAttribute(
+      'href',
+      encodedUri
+    )
+
+    link.setAttribute(
+      'download',
+      `vortexai_analiticas_${new Date()
+        .toISOString()
+        .slice(0, 10)}.csv`
+    )
+
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
   } catch (e) {
-    console.error("Error al exportar CSV:", e);
-    alert("Hubo un error al generar el archivo CSV.");
+    console.error(
+      'Error al exportar CSV:',
+      e
+    )
+
+    alert(
+      'Hubo un error al generar el archivo CSV.'
+    )
   }
-};
+}
 
 // Verificador de planes avanzados
 const esPlanGrowthSuperior = planCliente === 'growth' || planCliente ===
@@ -692,84 +1060,74 @@ Interacciones reales registradas hoy desde tu widget.
 </p>
 </div>
 </div>
-{/* SIMULADOR FUNCIONAL DEL CHATBOT */}
+
+{/* ESTADO DE CONFIGURACIÓN */}
+<div className="grid grid-cols-1 md:grid-cols-4 gap-3 mb-8">
+  <button type="button" onClick={() => setActiveTab('catalogo')} className="text-left bg-zinc-950 border border-zinc-800 rounded-xl p-4 hover:border-zinc-700 transition-all cursor-pointer">
+    <p className="text-[10px] uppercase tracking-wider text-slate-500">Catálogo</p>
+    <p className="text-sm font-semibold text-white mt-1">{userId ? 'Conectado' : 'Cargando...'}</p>
+    <p className="text-[11px] text-slate-500 mt-1">Productos disponibles para la IA</p>
+  </button>
+  <button type="button" onClick={() => setActiveTab('catalogo')} className="text-left bg-zinc-950 border border-zinc-800 rounded-xl p-4 hover:border-zinc-700 transition-all cursor-pointer">
+    <p className="text-[10px] uppercase tracking-wider text-slate-500">Políticas</p>
+    <p className="text-sm font-semibold text-white mt-1">{tiemposEnvio || politicas || faqs ? 'Configuradas' : 'Pendientes'}</p>
+    <p className="text-[11px] text-slate-500 mt-1">Información que consulta el chatbot</p>
+  </button>
+  <button type="button" onClick={() => setActiveTab('ia')} className="text-left bg-zinc-950 border border-zinc-800 rounded-xl p-4 hover:border-zinc-700 transition-all cursor-pointer">
+    <p className="text-[10px] uppercase tracking-wider text-slate-500">Funciones IA</p>
+    <p className="text-sm font-semibold text-white mt-1">{[detectorIdioma, exitIntent, recomendador, modoPersuasivo, carritoAbandonado, analisisSentimiento, cuponesFlash].filter(Boolean).length} activas</p>
+    <p className="text-[11px] text-slate-500 mt-1">Módulos habilitados en tu plan</p>
+  </button>
+  <button type="button" onClick={() => setActiveTab('widget')} className="text-left bg-zinc-950 border border-zinc-800 rounded-xl p-4 hover:border-zinc-700 transition-all cursor-pointer">
+    <p className="text-[10px] uppercase tracking-wider text-slate-500">Widget</p>
+    <p className="text-sm font-semibold text-white mt-1">{planCliente.toLowerCase() === 'free' ? 'Plan Free' : 'Disponible'}</p>
+    <p className="text-[11px] text-slate-500 mt-1">Código de instalación y despliegue</p>
+  </button>
+</div>
+
+{/* PREVIEW REAL DEL CHATBOT */}
 <div className="bg-zinc-950 border border-zinc-800 rounded-xl overflow-hidden shadow-2xl">
-<div className="px-6 py-4 bg-zinc-900/60 border-b border-zinc-800 flex justify-between items-center">
-<div className="flex items-center gap-2.5">
-<div className="w-3 h-3 rounded-full bg-rose-500"></div>
-<h3 className="font-semibold text-sm text-white">Simulador
-Funcional del Chatbot (Modo Pruebas)</h3>
-</div>
-<span className="text-[10px] px-2.5 py-1 rounded-md bg-zinc-800 text-zinc-300 font-medium border border-zinc-700">
-En Vivo
-</span>
-</div>
-<div className="p-6">
-<p className="text-xs text-gray-400 mb-4">
-Prueba exactamente cómo se comporta tu IA con los datos de tu
-catálogo y directrices configuradas antes de llevarlo a producción.
-</p>
-{/* Caja del chat reactiva */}
-<div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4 h-64 overflow-y-auto mb-4 flex flex-col gap-3">
-{chatMensajes && chatMensajes.map((msg, index) => (
-<div
-key={index}
-className={`flex items-start gap-2.5 ${msg.remitente === 'user' ? 'flex-row-reverse' : ''}`}
->
-<div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold text-white shrink-0 ${ msg.remitente === 'user' ? 'bg-zinc-700' : 'bg-rose-600' }`}>
-{msg.remitente === 'user' ? 'Tú' : 'AI'}
-</div>
-<div className={`text-xs p-3 rounded-2xl max-w-[80%] leading-relaxed ${ msg.remitente === 'user' ? 'bg-rose-600 text-white rounded-tr-sm' : 'bg-zinc-800 text-gray-200 rounded-tl-sm' }`}>
-{msg.texto}
-</div>
-</div>
-))}
-{isTyping && (
-<div className="flex items-start gap-2.5">
-<div className="w-7 h-7 rounded-full bg-rose-600 flex items-center justify-center text-xs font-bold text-white shrink-0">
-AI
-</div>
-<div className="bg-zinc-800 text-gray-400 text-xs p-3 rounded-2xl rounded-tl-sm animate-pulse">
-Escribiendo respuesta basada en el catálogo...
-</div>
-</div>
-)}
-</div>
-{/* Sugerencias rápidas */}
-<div className="flex items-center gap-2 mb-4 overflow-x-auto pb-1">
-<span className="text-[10px] text-gray-400 uppercase tracking-wider shrink-0">Prueba rápida:</span>
-<button
-type="button"
-onClick={() => setInputChat("¿Cuánto tardan los envíos?")}
-className="text-[11px] bg-zinc-900 hover:bg-zinc-800 text-gray-300 px-3 py-1 rounded-full border border-zinc-800 transition-all shrink-0 cursor-pointer"
->
-📦 ¿Cuánto tardan los envíos?
-</button>
-<button
-type="button"
-onClick={() => setInputChat("¿Cuáles son las formas de pago?")}
-className="text-[11px] bg-zinc-900 hover:bg-zinc-800 text-gray-300 px-3 py-1 rounded-full border border-zinc-800 transition-all shrink-0 cursor-pointer"
->
-💳 ¿Cuáles son las formas de pago?
-</button>
-</div>
-{/* Input de envío interactivo */}
-<form onSubmit={manejarEnvioChat} className="flex gap-2">
-<input
-type="text"
-value={inputChat}
-onChange={(e) => setInputChat(e.target.value)}
-placeholder="Escribe una pregunta para probar tu bot..."
-className="w-full bg-zinc-900 border border-zinc-700 rounded-xl px-4 py-3 text-xs text-white focus:outline-none focus:border-rose-500"
-/>
-<button
-type="submit"
-className="px-6 py-3 bg-rose-600 hover:bg-rose-500 text-white font-medium text-xs rounded-xl transition-all shadow-lg shadow-rose-950/50 text-nowrap cursor-pointer"
->
-Enviar
-</button>
-</form>
-</div>
+  <div className="px-6 py-4 bg-zinc-900/60 border-b border-zinc-800 flex flex-col md:flex-row md:justify-between md:items-center gap-3">
+    <div>
+      <div className="flex items-center gap-2.5">
+        <div className="w-3 h-3 rounded-full bg-rose-500 animate-pulse"></div>
+        <h3 className="font-semibold text-sm text-white">Preview real del Chatbot</h3>
+      </div>
+      <p className="text-[11px] text-gray-500 mt-1 ml-5">
+        Este es el mismo chatbot que usarán tus clientes: utiliza el mismo backend, catálogo, políticas y configuración guardada.
+      </p>
+    </div>
+    <span className="self-start md:self-auto text-[10px] px-2.5 py-1 rounded-md bg-emerald-500/10 text-emerald-400 font-medium border border-emerald-500/20">
+      IA EN VIVO
+    </span>
+  </div>
+
+  <div className="p-4">
+    <div className="relative h-[430px] overflow-hidden rounded-xl border border-zinc-800 bg-gradient-to-br from-zinc-900 to-zinc-950">
+      {userId ? (
+        <ChatWidget tiendaId={userId} modoPreview />
+      ) : (
+        <div className="h-full flex items-center justify-center text-xs text-slate-500">
+          Cargando identificador de la tienda...
+        </div>
+      )}
+    </div>
+
+    <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-3">
+      <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-3">
+        <p className="text-[10px] uppercase tracking-wider text-slate-500">Base de conocimiento</p>
+        <p className="text-xs text-slate-200 mt-1">Catálogo + políticas + FAQs</p>
+      </div>
+      <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-3">
+        <p className="text-[10px] uppercase tracking-wider text-slate-500">Configuración</p>
+        <p className="text-xs text-slate-200 mt-1">Se carga desde Supabase en tiempo real</p>
+      </div>
+      <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-3">
+        <p className="text-[10px] uppercase tracking-wider text-slate-500">Producción</p>
+        <p className="text-xs text-slate-200 mt-1">El mismo endpoint /api/chat</p>
+      </div>
+    </div>
+  </div>
 </div>
 </div>
 );
@@ -806,44 +1164,38 @@ de tu tienda online.
 </p>
 {/* NUEVA FUNCIÓN: Sincronización por URL */}
 <div className="mb-4">
-<label className="block text-xs font-medium text-gray-300 mb-1.5">Sincronizar mediante URL Web (Opcional)</label>
-<div className="flex gap-2">
-<input
-type="url"
-value={urlTienda}
-onChange={(e) => {
-  setUrlTienda(e.target.value);
-  setMensajeWeb('');
-}}
-onKeyDown={(e) => {
-  if (e.key === 'Enter') {
-    e.preventDefault();
-    extraerWeb();
-  }
-}}
-placeholder="https://mitienda.com"
-disabled={extrayendoWeb}
-className="w-full min-w-0 bg-zinc-900 border border-zinc-700 rounded-lg p-2.5 text-xs text-white focus:outline-none focus:border-rose-500 disabled:opacity-50"
-/>
-<button
-type="button"
-onClick={extraerWeb}
-disabled={extrayendoWeb}
-className="shrink-0 px-4 py-2.5 bg-zinc-800 hover:bg-zinc-700 text-xs font-medium rounded-lg border border-zinc-700 transition-all text-nowrap disabled:opacity-50 disabled:cursor-not-allowed"
->
-{extrayendoWeb ? 'Extrayendo...' : 'Extraer Web'}
-</button>
-</div>
+  <label className="block text-xs font-medium text-gray-300 mb-1.5">
+    Sincronizar mediante URL Web (Opcional)
+  </label>
 
-{mensajeWeb && (
-  <p className={`mt-2 text-xs ${
-    mensajeWeb.startsWith('¡Éxito!')
-      ? 'text-emerald-400'
-      : 'text-gray-400'
-  }`}>
-    {mensajeWeb}
-  </p>
-)}
+  <div className="flex gap-2">
+    <input
+      type="text"
+      value={urlTienda}
+      onChange={(e) => {
+        setUrlTienda(e.target.value);
+        setMensajeWeb('');
+      }}
+      placeholder="https://mitienda.com"
+      className="w-full bg-zinc-900 border border-zinc-700 rounded-lg p-2.5 text-xs text-white focus:outline-none focus:border-rose-500"
+      disabled={extrayendoWeb}
+    />
+
+    <button
+      type="button"
+      onClick={extraerWeb}
+      disabled={extrayendoWeb || !urlTienda.trim()}
+      className="px-4 py-2.5 bg-zinc-800 hover:bg-zinc-700 text-xs font-medium rounded-lg border border-zinc-700 transition-all text-nowrap disabled:opacity-50 disabled:cursor-not-allowed"
+    >
+      {extrayendoWeb ? 'Extrayendo...' : 'Extraer Web'}
+    </button>
+  </div>
+
+  {mensajeWeb && (
+    <p className="text-xs text-gray-400 mt-2">
+      {mensajeWeb}
+    </p>
+  )}
 </div>
 {/* Subida de CSV original */}
 <div className="space-y-3 pt-2 border-t border-zinc-900">
@@ -910,6 +1262,8 @@ dudas frecuentes de postventa.
 <label className="block text-xs font-medium text-gray-300 mb-1">Tiempos y Costes de Envío</label>
 <textarea
 rows={2}
+value={tiemposEnvio}
+onChange={(e) => setTiemposEnvio(e.target.value)}
 placeholder="Ej: Envíos en 24/48h península. Gratis a partir de 50€."
 className="w-full bg-zinc-900 border border-zinc-700 rounded-lg p-2.5 text-xs text-white focus:outline-none focus:border-rose-500 resize-none"
 />
@@ -918,6 +1272,8 @@ className="w-full bg-zinc-900 border border-zinc-700 rounded-lg p-2.5 text-xs te
 <label className="block text-xs font-medium text-gray-300 mb-1">Políticas de Devolución</label>
 <textarea
 rows={2}
+value={politicas}
+onChange={(e) => setPoliticas(e.target.value)}
 placeholder="Ej: 30 días naturales para cambios y devoluciones sin coste."
 className="w-full bg-zinc-900 border border-zinc-700 rounded-lg p-2.5 text-xs text-white focus:outline-none focus:border-rose-500 resize-none"
 />
@@ -927,6 +1283,8 @@ className="w-full bg-zinc-900 border border-zinc-700 rounded-lg p-2.5 text-xs te
 <label className="block text-xs font-medium text-gray-300 mb-1">✨ FAQs Personalizadas Extra (Opcional)</label>
 <input
 type="text"
+value={faqs}
+onChange={(e) => setFaqs(e.target.value)}
 placeholder="Ej: ¿Tenéis tienda física? -> Sí, en Barcelona."
 className="w-full bg-zinc-900 border border-zinc-700 rounded-lg p-2.5 text-xs text-white focus:outline-none focus:border-rose-500"
 />
@@ -935,9 +1293,11 @@ className="w-full bg-zinc-900 border border-zinc-700 rounded-lg p-2.5 text-xs te
 <div className="mt-6 pt-4 border-t border-zinc-900">
 <button
 type="button"
-className="w-full py-3 bg-zinc-900 hover:bg-zinc-800 text-white font-medium text-xs rounded-xl border border-zinc-700 transition-all"
+onClick={guardarConfiguracion}
+disabled={guardandoConfig || !userId}
+className="w-full py-3 bg-zinc-900 hover:bg-zinc-800 text-white font-medium text-xs rounded-xl border border-zinc-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
 >
-Guardar Políticas y FAQs
+{guardandoConfig ? 'Guardando políticas...' : 'Guardar Políticas y FAQs'}
 </button>
 </div>
 </div>
@@ -1299,126 +1659,233 @@ className="toggle accent-rose-500 cursor-pointer h-5 w-5 disabled:cursor-not-all
 })()}
 {/* VISTA: ANALÍTICAS Y RENDIMIENTO COMERCIAL (100% REAL Y EN TIEMPO REAL) */}
 {activeTab === 'analiticas' && (
-  <div className="max-w-5xl mx-auto p-6 text-white space-y-8">
-    <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+  <div className="max-w-6xl mx-auto p-6 text-white space-y-8">
+    {/* CABECERA */}
+    <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-5">
       <div>
+        <div className="flex items-center gap-2 mb-2">
+          <span className="w-2.5 h-2.5 rounded-full bg-rose-500 animate-pulse"></span>
+          <span className="text-[10px] uppercase tracking-wider text-rose-400 font-semibold">
+            Intelligence Center
+          </span>
+        </div>
         <h1 className="text-2xl font-bold flex items-center gap-2">
           📈 Analíticas y Rendimiento Comercial
         </h1>
-        <p className="text-gray-400 text-sm mt-1">
-          Mide el impacto real de tu asistente de IA sincronizado en tiempo real con la base de datos.
+        <p className="text-gray-400 text-sm mt-1 max-w-2xl">
+          Métricas calculadas exclusivamente a partir de las conversaciones registradas por tu asistente.
         </p>
       </div>
 
-      {/* Selector de Rango de Tiempo */}
-      <div className="flex bg-zinc-950 border border-zinc-800 p-1 rounded-xl">
+      {/* SELECTOR DE PERIODO */}
+      <div className="flex bg-zinc-950 border border-zinc-800 p-1 rounded-xl w-full lg:w-auto">
         {['24h', '7d', '30d'].map((rango) => (
           <button
             key={rango}
+            type="button"
             onClick={() => setRangoFechas(rango)}
-            className={`px-4 py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer ${
-              rangoFechas === rango ? 'bg-white/[0.08] text-white font-semibold' : 'text-slate-400 hover:text-white'
+            className={`flex-1 lg:flex-none px-4 py-2 rounded-lg text-xs font-medium transition-all cursor-pointer ${
+              rangoFechas === rango
+                ? 'bg-white/[0.08] text-white font-semibold'
+                : 'text-slate-400 hover:text-white'
             }`}
           >
-            {rango === '24h' ? 'Últimas 24h' : rango === '7d' ? 'Últimos 7 días' : 'Últimos 30 días'}
+            {rango === '24h'
+              ? 'Últimas 24h'
+              : rango === '7d'
+                ? 'Últimos 7 días'
+                : 'Últimos 30 días'}
           </button>
         ))}
       </div>
     </div>
 
-    {/* TARJETAS DE MÉTRICAS CLAVE EN TIEMPO REAL */}
+    {/* MÉTRICAS PRINCIPALES */}
     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-      <div className="bg-zinc-950 border border-zinc-800 p-5 rounded-2xl space-y-2">
-        <span className="text-xs text-slate-400 font-medium">Conversaciones Totales</span>
-        <div className="flex items-baseline justify-between">
-          <h3 className="text-2xl font-bold text-white">
-            {cargandoDatos ? '...' : metricasReales.totalChats}
-          </h3>
-          <span className="text-xs text-emerald-400 font-semibold bg-emerald-500/10 px-2 py-0.5 rounded-full flex items-center gap-1">
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span> En vivo
+      {/* CONVERSACIONES */}
+      <div className="bg-zinc-950 border border-zinc-800 p-5 rounded-2xl space-y-3">
+        <div className="flex items-center justify-between">
+          <span className="text-xs text-slate-400 font-medium">Conversaciones</span>
+          <span className="text-[10px] px-2 py-1 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+            Datos reales
           </span>
         </div>
-        <p className="text-[11px] text-slate-500">Usuarios atendidos por la IA</p>
-      </div>
-
-      <div className="bg-zinc-950 border border-zinc-800 p-5 rounded-2xl space-y-2">
-        <span className="text-xs text-slate-400 font-medium">Tasa de Resolución</span>
-        <div className="flex items-baseline justify-between">
-          <h3 className="text-2xl font-bold text-white">{metricasReales.tasaResolucion}</h3>
-          <span className="text-xs text-emerald-400 font-semibold bg-emerald-500/10 px-2 py-0.5 rounded-full">Óptimo</span>
-        </div>
-        <p className="text-[11px] text-slate-500">Sin necesidad de humano</p>
-      </div>
-
-      <div className="bg-zinc-950 border border-zinc-800 p-5 rounded-2xl space-y-2">
-        <span className="text-xs text-slate-400 font-medium">Leads / Consultas Custom</span>
-        <div className="flex items-baseline justify-between">
-          <h3 className="text-2xl font-bold text-white">
-            {cargandoDatos ? '...' : metricasReales.leadsCustom}
+        <div className="flex items-end justify-between gap-3">
+          <h3 className="text-3xl font-bold text-white">
+            {cargandoAnaliticas ? '...' : metricasReales.totalChats}
           </h3>
-          <span className="text-xs text-rose-400 font-semibold bg-rose-500/10 px-2 py-0.5 rounded-full">Activos</span>
+          <span className="text-[11px] text-slate-400">
+            {obtenerEtiquetaVariacion(metricasReales.variacionChats)}
+          </span>
         </div>
-        <p className="text-[11px] text-slate-500">Formarios detectados</p>
+        <p className="text-[11px] text-slate-500">
+          Conversaciones únicas con identificador real.
+        </p>
       </div>
 
-      <div className="bg-zinc-950 border border-zinc-800 p-5 rounded-2xl space-y-2">
-        <span className="text-xs text-slate-400 font-medium">Ahorro Estimado de Soporte</span>
-        <div className="flex items-baseline justify-between">
-          <h3 className="text-2xl font-bold text-emerald-400">
-            {cargandoDatos ? '...' : `${(metricasReales.totalChats * 0.30).toFixed(2)} €`}
-          </h3>
-          <span className="text-xs text-slate-400 font-semibold">Calculado</span>
+      {/* RESOLUCIÓN */}
+      <div className="bg-zinc-950 border border-zinc-800 p-5 rounded-2xl space-y-3">
+        <div className="flex items-center justify-between">
+          <span className="text-xs text-slate-400 font-medium">Tasa de resolución</span>
+          <span className="text-[10px] px-2 py-1 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+            Real
+          </span>
         </div>
-        <p className="text-[11px] text-slate-500">Basado en volumen real</p>
+        <div className="flex items-end justify-between gap-3">
+          <h3 className="text-3xl font-bold text-white">
+            {cargandoAnaliticas ? '...' : metricasReales.tasaResolucion}
+          </h3>
+          <span className="text-[11px] text-slate-400">
+            {obtenerEtiquetaVariacion(
+              metricasReales.variacionResolucion,
+              'puntos'
+            )}
+          </span>
+        </div>
+        <p className="text-[11px] text-slate-500">
+          Conversaciones resueltas sin derivación.
+        </p>
+      </div>
+
+      {/* MENSAJES */}
+      <div className="bg-zinc-950 border border-zinc-800 p-5 rounded-2xl space-y-3">
+        <div className="flex items-center justify-between">
+          <span className="text-xs text-slate-400 font-medium">Mensajes procesados</span>
+          <span className="text-[10px] px-2 py-1 rounded-full bg-zinc-800 text-slate-400 border border-zinc-700">
+            Volumen
+          </span>
+        </div>
+        <div className="flex items-end justify-between gap-3">
+          <h3 className="text-3xl font-bold text-white">
+            {cargandoAnaliticas ? '...' : metricasReales.mensajesProcesados}
+          </h3>
+          <span className="text-[11px] text-slate-400">
+            {obtenerEtiquetaVariacion(metricasReales.variacionMensajes)}
+          </span>
+        </div>
+        <p className="text-[11px] text-slate-500">
+          Mensajes registrados en el periodo seleccionado.
+        </p>
+      </div>
+
+      {/* VISITANTES */}
+      <div className="bg-zinc-950 border border-zinc-800 p-5 rounded-2xl space-y-3">
+        <div className="flex items-center justify-between">
+          <span className="text-xs text-slate-400 font-medium">Visitantes únicos</span>
+          <span className="text-[10px] px-2 py-1 rounded-full bg-rose-500/10 text-rose-400 border border-rose-500/20">
+            Identificados
+          </span>
+        </div>
+        <div className="flex items-end justify-between gap-3">
+          <h3 className="text-3xl font-bold text-white">
+            {cargandoAnaliticas ? '...' : metricasReales.visitantesUnicos}
+          </h3>
+        </div>
+        <p className="text-[11px] text-slate-500">
+          Visitantes con visitorId registrado por el widget.
+        </p>
       </div>
     </div>
 
-    {/* SECCIÓN DE PRODUCTOS / TEMAS MÁS CONSULTADOS Y EXPORTACIÓN */}
-    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-      {/* Temas y productos más consultados extraídos de los logs */}
-      <div className="bg-zinc-950 border border-zinc-800 p-6 rounded-2xl space-y-4">
-        <h3 className="font-semibold text-base text-white">📦 Temas y Artículos más consultados</h3>
-        <p className="text-xs text-slate-400">Agrupación automática basada en las preguntas reales de tus clientes.</p>
-        
+    {/* RESUMEN OPERATIVO */}
+    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="bg-zinc-950 border border-zinc-800 rounded-2xl p-5">
+        <p className="text-[10px] uppercase tracking-wider text-slate-500">Conversaciones resueltas</p>
+        <p className="text-xl font-bold text-emerald-400 mt-2">
+          {cargandoAnaliticas ? '...' : metricasReales.conversacionesResueltas}
+        </p>
+        <p className="text-[11px] text-slate-500 mt-1">Marcadas como resueltas por el backend.</p>
+      </div>
+
+      <div className="bg-zinc-950 border border-zinc-800 rounded-2xl p-5">
+        <p className="text-[10px] uppercase tracking-wider text-slate-500">Consultas no resueltas</p>
+        <p className="text-xl font-bold text-rose-400 mt-2">
+          {cargandoAnaliticas ? '...' : metricasReales.consultasNoResueltas}
+        </p>
+        <p className="text-[11px] text-slate-500 mt-1">Conversaciones que no figuran como resueltas.</p>
+      </div>
+
+      <div className="bg-zinc-950 border border-zinc-800 rounded-2xl p-5">
+        <p className="text-[10px] uppercase tracking-wider text-slate-500">Estado de los datos</p>
+        <div className="flex items-center gap-2 mt-3">
+          <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+          <span className="text-sm font-semibold text-white">Sincronización activa</span>
+        </div>
+        <p className="text-[11px] text-slate-500 mt-1">Las nuevas interacciones actualizan las métricas automáticamente.</p>
+      </div>
+    </div>
+
+    {/* TEMAS MÁS CONSULTADOS */}
+    <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
+      <div className="lg:col-span-3 bg-zinc-950 border border-zinc-800 p-6 rounded-2xl">
+        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 mb-5">
+          <div>
+            <h3 className="font-semibold text-base text-white">📦 Temas más consultados</h3>
+            <p className="text-xs text-slate-400 mt-1">
+              Clasificación de las preguntas reales de los clientes durante el periodo seleccionado.
+            </p>
+          </div>
+          <span className="text-[10px] px-2.5 py-1 rounded-lg bg-zinc-900 border border-zinc-800 text-slate-400">
+            Basado en mensajes de cliente
+          </span>
+        </div>
+
         <div className="space-y-3">
           {productosFrecuentes.map((item, index) => (
-            <div key={index} className="bg-zinc-900/50 border border-zinc-800/60 p-3.5 rounded-xl flex items-center justify-between">
-              <div>
-                <p className="text-xs font-semibold text-white">{item.nombre}</p>
-                <p className="text-[11px] text-slate-400">{item.consultas}</p>
+            <div
+              key={index}
+              className="bg-zinc-900/50 border border-zinc-800/60 p-4 rounded-xl"
+            >
+              <div className="flex items-center justify-between gap-4 mb-2">
+                <div className="min-w-0">
+                  <p className="text-xs font-semibold text-white truncate">{item.nombre}</p>
+                  <p className="text-[11px] text-slate-400 mt-0.5">{item.consultas}</p>
+                </div>
+                <span className="text-[11px] font-semibold text-rose-400 shrink-0">{item.porcentaje}</span>
               </div>
-              <div className="w-24 bg-zinc-800 h-2 rounded-full overflow-hidden">
-                <div className="bg-rose-500 h-full rounded-full transition-all duration-500" style={{ width: item.porcentaje }}></div>
+              <div className="w-full bg-zinc-800 h-1.5 rounded-full overflow-hidden">
+                <div
+                  className="bg-rose-500 h-full rounded-full transition-all duration-500"
+                  style={{ width: item.porcentaje }}
+                ></div>
               </div>
             </div>
           ))}
         </div>
       </div>
 
-      {/* Tarjeta de Exportación de Logs en CSV Real */}
-      <div className="bg-zinc-950 border border-zinc-800 p-6 rounded-2xl space-y-4 flex flex-col justify-between">
+      {/* EXPORTACIÓN */}
+      <div className="lg:col-span-2 bg-zinc-950 border border-zinc-800 p-6 rounded-2xl flex flex-col justify-between gap-6">
         <div>
-          <h3 className="font-semibold text-base text-white">🚀 Exportación de Logs e Insights</h3>
-          <p className="text-xs text-slate-400 mt-1">Descarga el historial completo de conversaciones directamente desde tu base de datos en formato CSV estructurado.</p>
+          <div className="flex items-center gap-2 mb-2">
+            <span className="text-lg">🚀</span>
+            <h3 className="font-semibold text-base text-white">Exportación de datos</h3>
+          </div>
+          <p className="text-xs text-slate-400 leading-relaxed">
+            Descarga las interacciones registradas por VortexAI para analizarlas fuera del dashboard.
+          </p>
         </div>
 
-        <div className="bg-zinc-900/50 border border-zinc-800/80 p-4 rounded-xl space-y-3">
-          <div className="flex items-center gap-2 text-rose-400 text-xs font-semibold">
-            <span>💡 Sincronización en Vivo</span>
-          </div>
-          <p className="text-[11px] text-slate-400 leading-relaxed">
-            El archivo descargado contendrá la fecha exacta, el remitente y los mensajes reales procesados por tu widget en producción.
+        <div className="bg-zinc-900/50 border border-zinc-800/80 p-4 rounded-xl">
+          <p className="text-[10px] uppercase tracking-wider text-slate-500">Incluye</p>
+          <p className="text-xs text-slate-200 mt-2 leading-relaxed">
+            Fecha · conversación · visitante · remitente · estado de resolución · mensaje
           </p>
         </div>
 
         <button
+          type="button"
           onClick={descargarCSVReal}
           className="w-full py-3 bg-white/[0.08] hover:bg-white/[0.12] text-white text-xs font-semibold rounded-xl transition-all cursor-pointer border border-zinc-700 shadow-md"
         >
-          📥 Descargar Informe Completo (CSV)
+          📥 Descargar informe CSV
         </button>
       </div>
     </div>
+
+    <p className="text-[10px] text-slate-600 leading-relaxed">
+      Nota: VortexAI no muestra porcentajes ficticios. La tasa de resolución se calcula a partir de los registros con conversation_id y resuelta almacenados en Supabase. Las variaciones comparan el periodo seleccionado con el periodo inmediatamente anterior de la misma duración.
+    </p>
   </div>
 )}
 {/* VISTA 5: WIDGET E INSTALACIÓN */}
