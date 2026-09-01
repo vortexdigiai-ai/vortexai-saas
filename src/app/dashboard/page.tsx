@@ -1,7 +1,6 @@
 'use client'
 import { useState, useEffect } from 'react'
 import CatalogoForm from './catalogo-form'
-import ChatWidget from '@/app/components/chat-widget'
 import { supabase } from '@/lib/supabase'
 import {
 Sparkles,
@@ -65,15 +64,6 @@ const [faqs, setFaqs] = useState('')
 const [archivoCSV, setArchivoCSV] = useState<File | null>(null);
 const [subiendoCSV, setSubiendoCSV] = useState(false);
 const [mensajeCSV, setMensajeCSV] = useState('');
-// Estados del chat de prueba del Overview
-const [inputChat, setInputChat] = useState('');
-const [chatMensajes, setChatMensajes] = useState<
-  { remitente: 'user' | 'ai'; texto: string }[]
->([]);
-const [isTyping, setIsTyping] = useState(false);
-const [urlTienda, setUrlTienda] = useState('');
-const [extrayendoWeb, setExtrayendoWeb] = useState(false);
-const [mensajeWeb, setMensajeWeb] = useState('');
 
 const subirCSV = async () => {
   if (!archivoCSV) {
@@ -123,60 +113,14 @@ const subirCSV = async () => {
   }
 };
 
-const extraerWeb = async () => {
-  if (!urlTienda.trim()) {
-    setMensajeWeb('Introduce primero la URL de tu tienda.');
-    return;
-  }
-
-  setExtrayendoWeb(true);
-  setMensajeWeb('');
-
-  try {
-    let url = urlTienda.trim();
-
-    if (!url.startsWith('http://') && !url.startsWith('https://')) {
-      url = `https://${url}`;
-    }
-
-    const response = await fetch('/api/import-url', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        url,
-        user_id: String(userId),
-      }),
-    });
-
-    const data = await response.json();
-
-    if (!response.ok) {
-      setMensajeWeb(
-        data.error || 'No se pudieron extraer los productos.'
-      );
-      return;
-    }
-
-    setMensajeWeb(
-      `¡Éxito! Se han extraído ${data.total_productos || 0} productos.`
-    );
-
-  } catch (error) {
-    console.error(
-      'VortexAI: error extrayendo tienda:',
-      error
-    );
-
-    setMensajeWeb(
-      'Error de conexión con el servidor.'
-    );
-
-  } finally {
-    setExtrayendoWeb(false);
-  }
-};
+// Estados y función para el simulador del chat
+const [chatMensajes, setChatMensajes] = useState<Array<{ remitente:
+'user' | 'ai', texto: string }>>([
+{ remitente: 'ai', texto: '¡Hola! 👋 Soy el asistente virtual de tu tienda. Pregúntame sobre envíos, políticas o productos disponibles.' }
+])
+const [inputChat, setInputChat] = useState('')
+const [isTyping, setIsTyping] = useState(false)
+const [conversationIdChatTest, setConversationIdChatTest] = useState('')
 
 // Estados para Flujos Híbridos y Reglas de Escape
 const [accionFallback, setAccionFallback] = useState('formulario'); // 'formulario' | 'whatsapp' | 'email'
@@ -188,6 +132,7 @@ const [mensajeFallback, setMensajeFallback] = useState('Vaya, parece que no teng
 const [chatsHoy, setChatsHoy] = useState(0)
 const [guardandoConfig, setGuardandoConfig] = useState(false)
 const [userId, setUserId] = useState<string>('')
+const [cargandoDatos, setCargandoDatos] = useState(true)
 
 // Estados de Logs que faltaban por declarar (para solucionar el error de TypeScript)
 const [cargandoLogs, setCargandoLogs] = useState(false)
@@ -203,41 +148,74 @@ useEffect(() => {
   obtenerUsuario()
 }, [])
 
-// Función para manejar el envío de mensajes del chat de prueba y guardarlos en la tabla real
+// Función para manejar el envío de mensajes del chat de prueba.
+// Usa la misma API real que el widget de producción para que las analíticas
+// representen conversaciones reales y no respuestas simuladas.
 const manejarEnvioChat = async (e?: React.FormEvent) => {
-if (e) e.preventDefault();
-if (!inputChat.trim()) return;
-const mensajeUsuario = inputChat;
-setChatMensajes(prev => [...prev, { remitente: 'user', texto:
-mensajeUsuario }]);
-setInputChat('');
-setIsTyping(true);
-setTimeout(async () => {
-let respuestaIA = "He consultado la base de conocimiento actual de tu tienda y las políticas configuradas para darte esta respuesta.";
-const textoLower = mensajeUsuario.toLowerCase();
-if (textoLower.includes('envío') || textoLower.includes('tardan') ||
-textoLower.includes('llegar')) {
-respuestaIA = "📦 Con respecto a los envíos: Se procesan y entregan según las directrices activas en tu panel de Políticas y Envíos.";
-} else if (textoLower.includes('pago') ||
-textoLower.includes('tarjeta') || textoLower.includes('cobro')) {
-respuestaIA = "💳 Tu tienda acepta los métodos de pago configurados en tu plataforma de comercio electrónico de forma segura.";
-} else if (textoLower.includes('devolución') ||
-textoLower.includes('cambio')) {
-respuestaIA = "🔄 Las condiciones de devolución están regidas por los plazos establecidos en tu sección de Políticas de tu dashboard.";
-}
-setChatMensajes(prev => [...prev, { remitente: 'ai', texto:
-respuestaIA }]);
-setIsTyping(false);
-// Guardar la interacción real en la tabla de Supabase para que aumente el contador del dashboard
-try {
-await supabase.from('interacciones_chat').insert([
-{ user_id: userId, remitente: 'user', texto: mensajeUsuario },
-{ user_id: userId, remitente: 'ai', texto: respuestaIA }
-]);
-} catch (err) {
-console.error('Error al guardar interacción en Supabase:', err);
-}
-}, 800);
+  if (e) e.preventDefault();
+  if (!inputChat.trim() || !userId) return;
+
+  const mensajeUsuario = inputChat.trim();
+  const conversationId =
+    conversationIdChatTest || crypto.randomUUID();
+
+  setConversationIdChatTest(conversationId);
+  setChatMensajes(prev => [
+    ...prev,
+    { remitente: 'user', texto: mensajeUsuario }
+  ]);
+  setInputChat('');
+  setIsTyping(true);
+
+  try {
+    const response = await fetch('/api/chat', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        mensaje: mensajeUsuario,
+        tiendaId: userId,
+        visitorId: null,
+        conversationId,
+        fallbackIntentos: 0,
+      }),
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(
+        data.error || 'No se pudo obtener una respuesta del asistente.'
+      );
+    }
+
+    if (data.conversationId) {
+      setConversationIdChatTest(data.conversationId);
+    }
+
+    setChatMensajes(prev => [
+      ...prev,
+      {
+        remitente: 'ai',
+        texto:
+          data.respuesta ||
+          'Lo siento, ha ocurrido un error al generar la respuesta.'
+      }
+    ]);
+  } catch (error) {
+    console.error('Error en el simulador del chatbot:', error);
+
+    setChatMensajes(prev => [
+      ...prev,
+      {
+        remitente: 'ai',
+        texto: 'Lo siento, ha ocurrido un error de conexión.'
+      }
+    ]);
+  } finally {
+    setIsTyping(false);
+  }
 };
 
 // Cargar datos de la tienda y métricas en tiempo real desde Supabase al iniciar
@@ -266,16 +244,27 @@ setColorPrimario(data.color_primario || '#f43f5e')
 setMensajeBienvenida(data.mensaje_bienvenida || '¡Hola! 👋 Soy el asistente virtual de tu tienda.')
 setAvatarEstilo(data.avatar_url || 'moderno')
 }
-// 2. Contar interacciones de HOY desde la nueva tabla interacciones_chat
+// 2. Contar conversaciones reales de HOY.
+// Solo usamos respuestas de IA con conversation_id para no contar
+// dos veces una misma conversación.
 const hoyInicio = new Date();
 hoyInicio.setHours(0, 0, 0, 0);
-const { count, error: errorCount } = await supabase
-.from('interacciones_chat')
-.select('*', { count: 'exact', head: true })
-.eq('user_id', userId)
-.gte('created_at', hoyInicio.toISOString());
-if (!errorCount && count !== null) {
-setChatsHoy(count);
+const { data: conversacionesHoy, error: errorCount } = await supabase
+  .from('interacciones_chat')
+  .select('conversation_id')
+  .eq('user_id', userId)
+  .eq('remitente', 'ai')
+  .not('conversation_id', 'is', null)
+  .gte('created_at', hoyInicio.toISOString());
+
+if (!errorCount && conversacionesHoy) {
+  const idsHoy = new Set(
+    conversacionesHoy
+      .map((item: any) => item.conversation_id)
+      .filter(Boolean)
+      .map(String)
+  );
+  setChatsHoy(idsHoy.size);
 }
 } catch (err) {
 console.log('Error al cargar datos y métricas:', err);
@@ -299,7 +288,7 @@ table: 'interacciones_chat',
 filter: `user_id=eq.${userId}`,
 },
 () => {
-setChatsHoy((prev) => prev + 1);
+cargarDatosYMetricas();
 }
 )
 .subscribe();
@@ -337,11 +326,6 @@ const guardarConfiguracion = async () => {
         nombre_asistente: nombreAsistente,
         posicion: posicionWidget,
         avatar_url: avatarFinal,
-
-        // POLÍTICAS Y BASE DE CONOCIMIENTO
-        tiempos_envio: tiemposEnvio,
-        politicas: politicas,
-        faqs: faqs,
 
         // FUNCIONES IA
         detector_idioma: detectorIdioma,
@@ -384,85 +368,163 @@ const guardarConfiguracion = async () => {
 const [rangoFechas, setRangoFechas] = useState('7d');
 const [metricasReales, setMetricasReales] = useState({
   totalChats: 0,
-  tasaResolucion: '95.2%',
+  tasaResolucion: '0%',
   mensajesProcesados: 0,
-  leadsCustom: 3
+  consultasNoResueltas: 0,
+  conversacionesResueltas: 0,
 });
 const [productosFrecuentes, setProductosFrecuentes] = useState([
-  { nombre: 'Cargando datos del catálogo...', consultas: '0 preguntas', porcentaje: '0%' }
+  { nombre: 'Sin datos todavía', consultas: '0 interacciones', porcentaje: '0%' }
 ]);
-const [cargandoDatos, setCargandoDatos] = useState(true);
+const [cargandoAnaliticas, setCargandoAnaliticas] = useState(true);
 
 useEffect(() => {
   async function obtenerAnaliticasAvanzadas() {
+    if (!userId) return;
+
     try {
-      setCargandoDatos(true);
-      const { data, count, error } = await supabase
+      setCargandoAnaliticas(true);
+
+      const ahora = new Date();
+      const horas = rangoFechas === '24h' ? 24 : rangoFechas === '7d' ? 24 * 7 : 24 * 30;
+      const fechaInicio = new Date(ahora.getTime() - horas * 60 * 60 * 1000);
+
+      const { data, error } = await supabase
         .from('interacciones_chat')
-        .select('*', { count: 'exact' })
+        .select('id, created_at, conversation_id, visitor_id, remitente, texto, resuelta')
         .eq('user_id', userId)
+        .gte('created_at', fechaInicio.toISOString())
         .order('created_at', { ascending: false });
 
-      if (!error && data) {
-        const totalMsgs = count || data.length;
-        const chatsUnicos = Math.ceil(totalMsgs / 2);
+      if (error) {
+        throw error;
+      }
 
-        setMetricasReales({
-          totalChats: chatsUnicos,
-          tasaResolucion: '95.2%',
-          mensajesProcesados: totalMsgs,
-          leadsCustom: Math.floor(chatsUnicos * 0.15)
-        });
+      const filas = data || [];
+      const idsConversacion = new Set<string>();
 
-        const conteoTemas: { [key: string]: number } = {
-          'Consultas Generales de Catálogo': 0,
-          'Envíos y Plazos de Entrega': 0,
-          'Políticas de Devolución': 0,
-          'Precios y Descuentos': 0
-        };
+      filas.forEach((item: any) => {
+        if (item.conversation_id) {
+          idsConversacion.add(String(item.conversation_id));
+        }
+      });
 
-        data.forEach((item: any) => {
-          const txt = (item.texto || '').toLowerCase();
-          if (txt.includes('envío') || txt.includes('tard') || txt.includes('llega')) {
-            conteoTemas['Envíos y Plazos de Entrega']++;
-          } else if (txt.includes('devolv') || txt.includes('cambio') || txt.includes('devolución')) {
-            conteoTemas['Políticas de Devolución']++;
-          } else if (txt.includes('precio') || txt.includes('cupon') || txt.includes('descuento')) {
-            conteoTemas['Precios y Descuentos']++;
-          } else {
-            conteoTemas['Consultas Generales de Catálogo']++;
+      // Solo contamos conversaciones que tienen conversation_id.
+      // Los registros antiguos sin ID no permiten reconstruir una conversación
+      // con precisión y no deben volver a calcularse artificialmente como mensajes / 2.
+      const conversacionesTotales = idsConversacion.size;
+
+      // Para cada conversación usamos la última respuesta de la IA como
+      // estado actual de resolución.
+      const ultimaResolucion = new Map<string, boolean>();
+
+      filas
+        .filter((item: any) =>
+          item.conversation_id &&
+          item.remitente === 'ai' &&
+          typeof item.resuelta === 'boolean'
+        )
+        .forEach((item: any) => {
+          const id = String(item.conversation_id);
+          if (!ultimaResolucion.has(id)) {
+            ultimaResolucion.set(id, item.resuelta === true);
           }
         });
 
-        const listaProcesada = Object.keys(conteoTemas).map((tema) => {
-          const cantidad = conteoTemas[tema];
-          const maxVal = Math.max(...Object.values(conteoTemas), 1);
-          const porcentajeNum = Math.round((cantidad / maxVal) * 100);
-          return {
-            nombre: tema,
-            consultas: `${cantidad} interacciones`,
-            porcentaje: `${Math.max(porcentajeNum, 10)}%`
-          };
-        });
+      let conversacionesResueltas = 0;
+      ultimaResolucion.forEach((resuelta) => {
+        if (resuelta) conversacionesResueltas++;
+      });
 
-        setProductosFrecuentes(listaProcesada);
-      }
+      const tasa = conversacionesTotales > 0
+        ? Math.round((conversacionesResueltas / conversacionesTotales) * 100)
+        : 0;
+
+      const consultasNoResueltas = Math.max(
+        conversacionesTotales - conversacionesResueltas,
+        0
+      );
+
+      setMetricasReales({
+        totalChats: conversacionesTotales,
+        tasaResolucion: `${tasa}%`,
+        mensajesProcesados: filas.length,
+        consultasNoResueltas,
+        conversacionesResueltas,
+      });
+
+      const conteoTemas: { [key: string]: number } = {
+        'Consultas Generales de Catálogo': 0,
+        'Envíos y Plazos de Entrega': 0,
+        'Políticas de Devolución': 0,
+        'Precios y Descuentos': 0,
+      };
+
+      filas.forEach((item: any) => {
+        const txt = String(item.texto || '')
+          .toLowerCase()
+          .normalize('NFD')
+          .replace(/[\u0300-\u036f]/g, '');
+
+        if (txt.includes('envio') || txt.includes('tard') || txt.includes('llega')) {
+          conteoTemas['Envíos y Plazos de Entrega']++;
+        } else if (txt.includes('devolv') || txt.includes('cambio')) {
+          conteoTemas['Políticas de Devolución']++;
+        } else if (txt.includes('precio') || txt.includes('cupon') || txt.includes('descuento')) {
+          conteoTemas['Precios y Descuentos']++;
+        } else {
+          conteoTemas['Consultas Generales de Catálogo']++;
+        }
+      });
+
+      const maxVal = Math.max(...Object.values(conteoTemas), 0);
+      const listaProcesada = Object.keys(conteoTemas).map((tema) => {
+        const cantidad = conteoTemas[tema];
+        const porcentajeNum = maxVal > 0
+          ? Math.round((cantidad / maxVal) * 100)
+          : 0;
+
+        return {
+          nombre: tema,
+          consultas: `${cantidad} interacciones`,
+          porcentaje: `${porcentajeNum}%`,
+        };
+      });
+
+      setProductosFrecuentes(listaProcesada);
     } catch (err) {
-      console.error("Error al cargar analíticas avanzadas:", err);
+      console.error('Error al cargar analíticas avanzadas:', err);
+      setMetricasReales({
+        totalChats: 0,
+        tasaResolucion: '0%',
+        mensajesProcesados: 0,
+        consultasNoResueltas: 0,
+        conversacionesResueltas: 0,
+      });
+      setProductosFrecuentes([
+        { nombre: 'Sin datos disponibles', consultas: '0 interacciones', porcentaje: '0%' }
+      ]);
     } finally {
-      setCargandoDatos(false);
+      setCargandoAnaliticas(false);
     }
   }
 
-  if (userId) {
-    obtenerAnaliticasAvanzadas();
-  }
+  obtenerAnaliticasAvanzadas();
 
   const subscription = supabase
-    .channel('cambios-analiticas-avanzadas')
-    .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'interacciones_chat' }, () => {
-      if (userId) obtenerAnaliticasAvanzadas();
-    })
+    .channel(`cambios-analiticas-avanzadas-${userId}`)
+    .on(
+      'postgres_changes',
+      {
+        event: '*',
+        schema: 'public',
+        table: 'interacciones_chat',
+        filter: `user_id=eq.${userId}`,
+      },
+      () => {
+        obtenerAnaliticasAvanzadas();
+      }
+    )
     .subscribe();
 
   return () => {
@@ -594,20 +656,38 @@ Configuración
 </div>
 </aside>
 {/* ──────────────── CONTENIDO PRINCIPAL ──────────────── */}
-<div className="flex-1 flex flex-col min-h-screen">
-<header className="h-20 border-b border-white/[0.08] bg-[#0A0B0E]/80 backdrop-blur-xl px-8 flex items-center justify-between sticky top-0 z-20">
-<div className="flex items-center gap-4">
-<span className="text-sm font-mono text-slate-400">Proyecto:
+<div className="flex-1 flex flex-col min-h-screen min-w-0">
+<header className="min-h-20 border-b border-white/[0.08] bg-[#0A0B0E]/80 backdrop-blur-xl px-4 md:px-8 py-3 flex items-center justify-between gap-3 sticky top-0 z-20">
+<div className="flex items-center gap-2 md:gap-4 min-w-0">
+<span className="text-xs md:text-sm font-mono text-slate-400 truncate">Proyecto:
 <strong className="text-white">Mi Tienda Online</strong></span>
 <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
 <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" /> Activo en producción
 </span>
 </div>
-<button onClick={() => setActiveTab('widget')} className="px-4 py-2 bg-gradient-to-r from-rose-500 to-orange-400 text-white text-xs font-semibold rounded-xl shadow-lg shadow-rose-500/20 hover:opacity-95 transition-opacity">
+<button onClick={() => setActiveTab('widget')} className="hidden sm:block px-4 py-2 bg-gradient-to-r from-rose-500 to-orange-400 text-white text-xs font-semibold rounded-xl shadow-lg shadow-rose-500/20 hover:opacity-95 transition-opacity whitespace-nowrap">
 Ver Widget de Tienda
 </button>
 </header>
-<main className="flex-1 p-8 max-w-5xl w-full mx-auto space-y-8">
+<div className="md:hidden border-b border-white/[0.08] bg-[#0A0B0E] px-4 py-3 sticky top-20 z-10">
+<select
+  value={activeTab}
+  onChange={(e) => setActiveTab(e.target.value as typeof activeTab)}
+  className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-3 py-2.5 text-sm text-white focus:outline-none focus:border-rose-500"
+>
+  <option value="overview">Resumen</option>
+  <option value="catalogo">Catálogo & Políticas</option>
+  <option value="ia">Funciones IA</option>
+  <option value="personalizacion">Personalización</option>
+  <option value="flujos-hibridos">Flujos Híbridos</option>
+  <option value="analiticas">Analíticas</option>
+  <option value="widget">Widget e Instalación</option>
+  <option value="logs">Conversaciones & Logs</option>
+  <option value="settings">Configuración</option>
+  <option value="planes">Planes</option>
+</select>
+</div>
+<main className="flex-1 p-4 md:p-8 max-w-5xl w-full mx-auto space-y-6 md:space-y-8 min-w-0">
 {cargandoDatos ? (
 <div className="text-center py-20 text-slate-400 font-mono text-sm">Sincronizando plan y datos con Supabase...</div>
 ) : (
@@ -615,7 +695,7 @@ Ver Widget de Tienda
 {/* VISTA 1: OVERVIEW */}
 {activeTab === 'overview' && (() => {
 return (
-<div className="max-w-6xl mx-auto p-6 text-white">
+<div className="max-w-6xl mx-auto p-4 md:p-6 text-white">
 {/* Cabecera */}
 <div className="mb-6 flex justify-between items-center">
 <div>
@@ -679,74 +759,84 @@ Interacciones reales registradas hoy desde tu widget.
 </p>
 </div>
 </div>
-
-{/* ESTADO DE CONFIGURACIÓN */}
-<div className="grid grid-cols-1 md:grid-cols-4 gap-3 mb-8">
-  <button type="button" onClick={() => setActiveTab('catalogo')} className="text-left bg-zinc-950 border border-zinc-800 rounded-xl p-4 hover:border-zinc-700 transition-all cursor-pointer">
-    <p className="text-[10px] uppercase tracking-wider text-slate-500">Catálogo</p>
-    <p className="text-sm font-semibold text-white mt-1">{userId ? 'Conectado' : 'Cargando...'}</p>
-    <p className="text-[11px] text-slate-500 mt-1">Productos disponibles para la IA</p>
-  </button>
-  <button type="button" onClick={() => setActiveTab('catalogo')} className="text-left bg-zinc-950 border border-zinc-800 rounded-xl p-4 hover:border-zinc-700 transition-all cursor-pointer">
-    <p className="text-[10px] uppercase tracking-wider text-slate-500">Políticas</p>
-    <p className="text-sm font-semibold text-white mt-1">{tiemposEnvio || politicas || faqs ? 'Configuradas' : 'Pendientes'}</p>
-    <p className="text-[11px] text-slate-500 mt-1">Información que consulta el chatbot</p>
-  </button>
-  <button type="button" onClick={() => setActiveTab('ia')} className="text-left bg-zinc-950 border border-zinc-800 rounded-xl p-4 hover:border-zinc-700 transition-all cursor-pointer">
-    <p className="text-[10px] uppercase tracking-wider text-slate-500">Funciones IA</p>
-    <p className="text-sm font-semibold text-white mt-1">{[detectorIdioma, exitIntent, recomendador, modoPersuasivo, carritoAbandonado, analisisSentimiento, cuponesFlash].filter(Boolean).length} activas</p>
-    <p className="text-[11px] text-slate-500 mt-1">Módulos habilitados en tu plan</p>
-  </button>
-  <button type="button" onClick={() => setActiveTab('widget')} className="text-left bg-zinc-950 border border-zinc-800 rounded-xl p-4 hover:border-zinc-700 transition-all cursor-pointer">
-    <p className="text-[10px] uppercase tracking-wider text-slate-500">Widget</p>
-    <p className="text-sm font-semibold text-white mt-1">{planCliente.toLowerCase() === 'free' ? 'Plan Free' : 'Disponible'}</p>
-    <p className="text-[11px] text-slate-500 mt-1">Código de instalación y despliegue</p>
-  </button>
-</div>
-
-{/* PREVIEW REAL DEL CHATBOT */}
+{/* SIMULADOR FUNCIONAL DEL CHATBOT */}
 <div className="bg-zinc-950 border border-zinc-800 rounded-xl overflow-hidden shadow-2xl">
-  <div className="px-6 py-4 bg-zinc-900/60 border-b border-zinc-800 flex flex-col md:flex-row md:justify-between md:items-center gap-3">
-    <div>
-      <div className="flex items-center gap-2.5">
-        <div className="w-3 h-3 rounded-full bg-rose-500 animate-pulse"></div>
-        <h3 className="font-semibold text-sm text-white">Preview real del Chatbot</h3>
-      </div>
-      <p className="text-[11px] text-gray-500 mt-1 ml-5">
-        Este es el mismo chatbot que usarán tus clientes: utiliza el mismo backend, catálogo, políticas y configuración guardada.
-      </p>
-    </div>
-    <span className="self-start md:self-auto text-[10px] px-2.5 py-1 rounded-md bg-emerald-500/10 text-emerald-400 font-medium border border-emerald-500/20">
-      IA EN VIVO
-    </span>
-  </div>
-
-  <div className="p-4">
-    <div className="relative h-[430px] overflow-hidden rounded-xl border border-zinc-800 bg-gradient-to-br from-zinc-900 to-zinc-950">
-      {userId ? (
-        <ChatWidget tiendaId={userId} modoPreview />
-      ) : (
-        <div className="h-full flex items-center justify-center text-xs text-slate-500">
-          Cargando identificador de la tienda...
-        </div>
-      )}
-    </div>
-
-    <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-3">
-      <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-3">
-        <p className="text-[10px] uppercase tracking-wider text-slate-500">Base de conocimiento</p>
-        <p className="text-xs text-slate-200 mt-1">Catálogo + políticas + FAQs</p>
-      </div>
-      <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-3">
-        <p className="text-[10px] uppercase tracking-wider text-slate-500">Configuración</p>
-        <p className="text-xs text-slate-200 mt-1">Se carga desde Supabase en tiempo real</p>
-      </div>
-      <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-3">
-        <p className="text-[10px] uppercase tracking-wider text-slate-500">Producción</p>
-        <p className="text-xs text-slate-200 mt-1">El mismo endpoint /api/chat</p>
-      </div>
-    </div>
-  </div>
+<div className="px-6 py-4 bg-zinc-900/60 border-b border-zinc-800 flex justify-between items-center">
+<div className="flex items-center gap-2.5">
+<div className="w-3 h-3 rounded-full bg-rose-500"></div>
+<h3 className="font-semibold text-sm text-white">Simulador
+Funcional del Chatbot (Modo Pruebas)</h3>
+</div>
+<span className="text-[10px] px-2.5 py-1 rounded-md bg-zinc-800 text-zinc-300 font-medium border border-zinc-700">
+En Vivo
+</span>
+</div>
+<div className="p-6">
+<p className="text-xs text-gray-400 mb-4">
+Prueba exactamente cómo se comporta tu IA con los datos de tu
+catálogo y directrices configuradas antes de llevarlo a producción.
+</p>
+{/* Caja del chat reactiva */}
+<div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4 h-64 overflow-y-auto mb-4 flex flex-col gap-3">
+{chatMensajes && chatMensajes.map((msg, index) => (
+<div
+key={index}
+className={`flex items-start gap-2.5 ${msg.remitente === 'user' ? 'flex-row-reverse' : ''}`}
+>
+<div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold text-white shrink-0 ${ msg.remitente === 'user' ? 'bg-zinc-700' : 'bg-rose-600' }`}>
+{msg.remitente === 'user' ? 'Tú' : 'AI'}
+</div>
+<div className={`text-xs p-3 rounded-2xl max-w-[80%] leading-relaxed ${ msg.remitente === 'user' ? 'bg-rose-600 text-white rounded-tr-sm' : 'bg-zinc-800 text-gray-200 rounded-tl-sm' }`}>
+{msg.texto}
+</div>
+</div>
+))}
+{isTyping && (
+<div className="flex items-start gap-2.5">
+<div className="w-7 h-7 rounded-full bg-rose-600 flex items-center justify-center text-xs font-bold text-white shrink-0">
+AI
+</div>
+<div className="bg-zinc-800 text-gray-400 text-xs p-3 rounded-2xl rounded-tl-sm animate-pulse">
+Escribiendo respuesta basada en el catálogo...
+</div>
+</div>
+)}
+</div>
+{/* Sugerencias rápidas */}
+<div className="flex items-center gap-2 mb-4 overflow-x-auto pb-1">
+<span className="text-[10px] text-gray-400 uppercase tracking-wider shrink-0">Prueba rápida:</span>
+<button
+type="button"
+onClick={() => setInputChat("¿Cuánto tardan los envíos?")}
+className="text-[11px] bg-zinc-900 hover:bg-zinc-800 text-gray-300 px-3 py-1 rounded-full border border-zinc-800 transition-all shrink-0 cursor-pointer"
+>
+📦 ¿Cuánto tardan los envíos?
+</button>
+<button
+type="button"
+onClick={() => setInputChat("¿Cuáles son las formas de pago?")}
+className="text-[11px] bg-zinc-900 hover:bg-zinc-800 text-gray-300 px-3 py-1 rounded-full border border-zinc-800 transition-all shrink-0 cursor-pointer"
+>
+💳 ¿Cuáles son las formas de pago?
+</button>
+</div>
+{/* Input de envío interactivo */}
+<form onSubmit={manejarEnvioChat} className="flex gap-2">
+<input
+type="text"
+value={inputChat}
+onChange={(e) => setInputChat(e.target.value)}
+placeholder="Escribe una pregunta para probar tu bot..."
+className="w-full bg-zinc-900 border border-zinc-700 rounded-xl px-4 py-3 text-xs text-white focus:outline-none focus:border-rose-500"
+/>
+<button
+type="submit"
+className="px-6 py-3 bg-rose-600 hover:bg-rose-500 text-white font-medium text-xs rounded-xl transition-all shadow-lg shadow-rose-950/50 text-nowrap cursor-pointer"
+>
+Enviar
+</button>
+</form>
+</div>
 </div>
 </div>
 );
@@ -754,7 +844,7 @@ Interacciones reales registradas hoy desde tu widget.
 {/* VISTA 2: CATÁLOGO & POLÍTICAS */}
 {activeTab === 'catalogo' && (() => {
 return (
-<div className="max-w-6xl mx-auto p-6 text-white">
+<div className="max-w-6xl mx-auto p-4 md:p-6 text-white">
 {/* Cabecera */}
 <div className="mb-8">
 <h1 className="text-2xl font-bold flex items-center gap-2">
@@ -783,38 +873,20 @@ de tu tienda online.
 </p>
 {/* NUEVA FUNCIÓN: Sincronización por URL */}
 <div className="mb-4">
-  <label className="block text-xs font-medium text-gray-300 mb-1.5">
-    Sincronizar mediante URL Web (Opcional)
-  </label>
-
-  <div className="flex gap-2">
-    <input
-      type="text"
-      value={urlTienda}
-      onChange={(e) => {
-        setUrlTienda(e.target.value);
-        setMensajeWeb('');
-      }}
-      placeholder="https://mitienda.com"
-      className="w-full bg-zinc-900 border border-zinc-700 rounded-lg p-2.5 text-xs text-white focus:outline-none focus:border-rose-500"
-      disabled={extrayendoWeb}
-    />
-
-    <button
-      type="button"
-      onClick={extraerWeb}
-      disabled={extrayendoWeb || !urlTienda.trim()}
-      className="px-4 py-2.5 bg-zinc-800 hover:bg-zinc-700 text-xs font-medium rounded-lg border border-zinc-700 transition-all text-nowrap disabled:opacity-50 disabled:cursor-not-allowed"
-    >
-      {extrayendoWeb ? 'Extrayendo...' : 'Extraer Web'}
-    </button>
-  </div>
-
-  {mensajeWeb && (
-    <p className="text-xs text-gray-400 mt-2">
-      {mensajeWeb}
-    </p>
-  )}
+<label className="block text-xs font-medium text-gray-300 mb-1.5">Sincronizar mediante URL Web (Opcional)</label>
+<div className="flex gap-2">
+<input
+type="text"
+placeholder="https://mitienda.com"
+className="w-full bg-zinc-900 border border-zinc-700 rounded-lg p-2.5 text-xs text-white focus:outline-none focus:border-rose-500"
+/>
+<button
+type="button"
+className="px-4 py-2.5 bg-zinc-800 hover:bg-zinc-700 text-xs font-medium rounded-lg border border-zinc-700 transition-all text-nowrap"
+>
+Extraer Web
+</button>
+</div>
 </div>
 {/* Subida de CSV original */}
 <div className="space-y-3 pt-2 border-t border-zinc-900">
@@ -881,8 +953,6 @@ dudas frecuentes de postventa.
 <label className="block text-xs font-medium text-gray-300 mb-1">Tiempos y Costes de Envío</label>
 <textarea
 rows={2}
-value={tiemposEnvio}
-onChange={(e) => setTiemposEnvio(e.target.value)}
 placeholder="Ej: Envíos en 24/48h península. Gratis a partir de 50€."
 className="w-full bg-zinc-900 border border-zinc-700 rounded-lg p-2.5 text-xs text-white focus:outline-none focus:border-rose-500 resize-none"
 />
@@ -891,8 +961,6 @@ className="w-full bg-zinc-900 border border-zinc-700 rounded-lg p-2.5 text-xs te
 <label className="block text-xs font-medium text-gray-300 mb-1">Políticas de Devolución</label>
 <textarea
 rows={2}
-value={politicas}
-onChange={(e) => setPoliticas(e.target.value)}
 placeholder="Ej: 30 días naturales para cambios y devoluciones sin coste."
 className="w-full bg-zinc-900 border border-zinc-700 rounded-lg p-2.5 text-xs text-white focus:outline-none focus:border-rose-500 resize-none"
 />
@@ -902,8 +970,6 @@ className="w-full bg-zinc-900 border border-zinc-700 rounded-lg p-2.5 text-xs te
 <label className="block text-xs font-medium text-gray-300 mb-1">✨ FAQs Personalizadas Extra (Opcional)</label>
 <input
 type="text"
-value={faqs}
-onChange={(e) => setFaqs(e.target.value)}
 placeholder="Ej: ¿Tenéis tienda física? -> Sí, en Barcelona."
 className="w-full bg-zinc-900 border border-zinc-700 rounded-lg p-2.5 text-xs text-white focus:outline-none focus:border-rose-500"
 />
@@ -912,11 +978,9 @@ className="w-full bg-zinc-900 border border-zinc-700 rounded-lg p-2.5 text-xs te
 <div className="mt-6 pt-4 border-t border-zinc-900">
 <button
 type="button"
-onClick={guardarConfiguracion}
-disabled={guardandoConfig || !userId}
-className="w-full py-3 bg-zinc-900 hover:bg-zinc-800 text-white font-medium text-xs rounded-xl border border-zinc-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+className="w-full py-3 bg-zinc-900 hover:bg-zinc-800 text-white font-medium text-xs rounded-xl border border-zinc-700 transition-all"
 >
-{guardandoConfig ? 'Guardando políticas...' : 'Guardar Políticas y FAQs'}
+Guardar Políticas y FAQs
 </button>
 </div>
 </div>
@@ -990,7 +1054,7 @@ onChange: setAnalisisSentimiento
 },
 ];
 return (
-<div className="max-w-5xl mx-auto p-6 text-white">
+<div className="max-w-5xl mx-auto p-4 md:p-6 text-white">
 <div className="mb-8 flex justify-between items-center">
 <div>
 <h1 className="text-2xl font-bold flex items-center gap-2">
@@ -1055,7 +1119,7 @@ className="toggle accent-rose-500 cursor-pointer h-5 w-5 disabled:cursor-not-all
 })()}
 {/* VISTA: FLUJOS HÍBRIDOS Y REGLAS DE ESCAPE */}
 {activeTab === 'flujos-hibridos' && (
-  <div className="max-w-5xl mx-auto p-6 text-white space-y-8">
+  <div className="max-w-5xl mx-auto p-4 md:p-6 text-white space-y-8">
     <div>
       <h1 className="text-2xl font-bold flex items-center gap-2">
         🤝 Flujos Híbridos y Reglas de Escape (Handover)
@@ -1152,7 +1216,7 @@ className="toggle accent-rose-500 cursor-pointer h-5 w-5 disabled:cursor-not-all
 {/* VISTA 4: PERSONALIZACIÓN AVANZADA (EXCLUSIVA GROWTH, PRO & CUSTOM) */}
 {activeTab === 'personalizacion' && (() => {
   return (
-    <div className="max-w-5xl mx-auto p-6 text-white">
+    <div className="max-w-5xl mx-auto p-4 md:p-6 text-white">
       <div className="mb-8">
         <h1 className="text-2xl font-bold flex items-center gap-2">
           🎨 Personalización Avanzada del Chatbot
@@ -1278,25 +1342,26 @@ className="toggle accent-rose-500 cursor-pointer h-5 w-5 disabled:cursor-not-all
 })()}
 {/* VISTA: ANALÍTICAS Y RENDIMIENTO COMERCIAL (100% REAL Y EN TIEMPO REAL) */}
 {activeTab === 'analiticas' && (
-  <div className="max-w-5xl mx-auto p-6 text-white space-y-8">
+  <div className="max-w-5xl mx-auto p-4 md:p-6 text-white space-y-6 md:space-y-8">
     <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-      <div>
+      <div className="min-w-0">
         <h1 className="text-2xl font-bold flex items-center gap-2">
           📈 Analíticas y Rendimiento Comercial
         </h1>
         <p className="text-gray-400 text-sm mt-1">
-          Mide el impacto real de tu asistente de IA sincronizado en tiempo real con la base de datos.
+          Datos reales de las conversaciones procesadas por tu asistente.
         </p>
       </div>
 
-      {/* Selector de Rango de Tiempo */}
-      <div className="flex bg-zinc-950 border border-zinc-800 p-1 rounded-xl">
+      <div className="flex bg-zinc-950 border border-zinc-800 p-1 rounded-xl w-full md:w-auto overflow-x-auto">
         {['24h', '7d', '30d'].map((rango) => (
           <button
             key={rango}
             onClick={() => setRangoFechas(rango)}
-            className={`px-4 py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer ${
-              rangoFechas === rango ? 'bg-white/[0.08] text-white font-semibold' : 'text-slate-400 hover:text-white'
+            className={`flex-1 md:flex-none whitespace-nowrap px-3 md:px-4 py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer ${
+              rangoFechas === rango
+                ? 'bg-white/[0.08] text-white font-semibold'
+                : 'text-slate-400 hover:text-white'
             }`}
           >
             {rango === '24h' ? 'Últimas 24h' : rango === '7d' ? 'Últimos 7 días' : 'Últimos 30 días'}
@@ -1305,88 +1370,97 @@ className="toggle accent-rose-500 cursor-pointer h-5 w-5 disabled:cursor-not-all
       </div>
     </div>
 
-    {/* TARJETAS DE MÉTRICAS CLAVE EN TIEMPO REAL */}
     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
       <div className="bg-zinc-950 border border-zinc-800 p-5 rounded-2xl space-y-2">
-        <span className="text-xs text-slate-400 font-medium">Conversaciones Totales</span>
-        <div className="flex items-baseline justify-between">
+        <span className="text-xs text-slate-400 font-medium">Conversaciones</span>
+        <div className="flex items-baseline justify-between gap-2">
           <h3 className="text-2xl font-bold text-white">
-            {cargandoDatos ? '...' : metricasReales.totalChats}
+            {cargandoAnaliticas ? '...' : metricasReales.totalChats}
           </h3>
-          <span className="text-xs text-emerald-400 font-semibold bg-emerald-500/10 px-2 py-0.5 rounded-full flex items-center gap-1">
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span> En vivo
+          <span className="text-xs text-emerald-400 font-semibold bg-emerald-500/10 px-2 py-0.5 rounded-full">
+            Real
           </span>
         </div>
-        <p className="text-[11px] text-slate-500">Usuarios atendidos por la IA</p>
+        <p className="text-[11px] text-slate-500">Conversaciones identificadas por ID.</p>
       </div>
 
       <div className="bg-zinc-950 border border-zinc-800 p-5 rounded-2xl space-y-2">
         <span className="text-xs text-slate-400 font-medium">Tasa de Resolución</span>
-        <div className="flex items-baseline justify-between">
-          <h3 className="text-2xl font-bold text-white">{metricasReales.tasaResolucion}</h3>
-          <span className="text-xs text-emerald-400 font-semibold bg-emerald-500/10 px-2 py-0.5 rounded-full">Óptimo</span>
-        </div>
-        <p className="text-[11px] text-slate-500">Sin necesidad de humano</p>
-      </div>
-
-      <div className="bg-zinc-950 border border-zinc-800 p-5 rounded-2xl space-y-2">
-        <span className="text-xs text-slate-400 font-medium">Leads / Consultas Custom</span>
-        <div className="flex items-baseline justify-between">
+        <div className="flex items-baseline justify-between gap-2">
           <h3 className="text-2xl font-bold text-white">
-            {cargandoDatos ? '...' : metricasReales.leadsCustom}
+            {cargandoAnaliticas ? '...' : metricasReales.tasaResolucion}
           </h3>
-          <span className="text-xs text-rose-400 font-semibold bg-rose-500/10 px-2 py-0.5 rounded-full">Activos</span>
+          <span className="text-xs text-emerald-400 font-semibold bg-emerald-500/10 px-2 py-0.5 rounded-full">
+            Automática
+          </span>
         </div>
-        <p className="text-[11px] text-slate-500">Formarios detectados</p>
+        <p className="text-[11px] text-slate-500">Resueltas sin fallback ni derivación.</p>
       </div>
 
       <div className="bg-zinc-950 border border-zinc-800 p-5 rounded-2xl space-y-2">
-        <span className="text-xs text-slate-400 font-medium">Ahorro Estimado de Soporte</span>
-        <div className="flex items-baseline justify-between">
-          <h3 className="text-2xl font-bold text-emerald-400">
-            {cargandoDatos ? '...' : `${(metricasReales.totalChats * 0.30).toFixed(2)} €`}
+        <span className="text-xs text-slate-400 font-medium">Consultas no resueltas</span>
+        <div className="flex items-baseline justify-between gap-2">
+          <h3 className="text-2xl font-bold text-white">
+            {cargandoAnaliticas ? '...' : metricasReales.consultasNoResueltas}
           </h3>
-          <span className="text-xs text-slate-400 font-semibold">Calculado</span>
+          <span className="text-xs text-amber-400 font-semibold bg-amber-500/10 px-2 py-0.5 rounded-full">
+            Atención
+          </span>
         </div>
-        <p className="text-[11px] text-slate-500">Basado en volumen real</p>
+        <p className="text-[11px] text-slate-500">Conversaciones que requieren mejora o ayuda humana.</p>
+      </div>
+
+      <div className="bg-zinc-950 border border-zinc-800 p-5 rounded-2xl space-y-2">
+        <span className="text-xs text-slate-400 font-medium">Mensajes procesados</span>
+        <div className="flex items-baseline justify-between gap-2">
+          <h3 className="text-2xl font-bold text-emerald-400">
+            {cargandoAnaliticas ? '...' : metricasReales.mensajesProcesados}
+          </h3>
+          <span className="text-xs text-slate-400 font-semibold">Periodo</span>
+        </div>
+        <p className="text-[11px] text-slate-500">Mensajes registrados en el rango seleccionado.</p>
       </div>
     </div>
 
-    {/* SECCIÓN DE PRODUCTOS / TEMAS MÁS CONSULTADOS Y EXPORTACIÓN */}
     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-      {/* Temas y productos más consultados extraídos de los logs */}
       <div className="bg-zinc-950 border border-zinc-800 p-6 rounded-2xl space-y-4">
-        <h3 className="font-semibold text-base text-white">📦 Temas y Artículos más consultados</h3>
-        <p className="text-xs text-slate-400">Agrupación automática basada en las preguntas reales de tus clientes.</p>
-        
+        <div>
+          <h3 className="font-semibold text-base text-white">📦 Temas más consultados</h3>
+          <p className="text-xs text-slate-400 mt-1">Clasificación de las interacciones reales del periodo.</p>
+        </div>
+
         <div className="space-y-3">
           {productosFrecuentes.map((item, index) => (
-            <div key={index} className="bg-zinc-900/50 border border-zinc-800/60 p-3.5 rounded-xl flex items-center justify-between">
-              <div>
-                <p className="text-xs font-semibold text-white">{item.nombre}</p>
-                <p className="text-[11px] text-slate-400">{item.consultas}</p>
+            <div key={index} className="bg-zinc-900/50 border border-zinc-800/60 p-3.5 rounded-xl space-y-2">
+              <div className="flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-xs font-semibold text-white truncate">{item.nombre}</p>
+                  <p className="text-[11px] text-slate-400">{item.consultas}</p>
+                </div>
+                <span className="text-[11px] text-slate-300 shrink-0">{item.porcentaje}</span>
               </div>
-              <div className="w-24 bg-zinc-800 h-2 rounded-full overflow-hidden">
-                <div className="bg-rose-500 h-full rounded-full transition-all duration-500" style={{ width: item.porcentaje }}></div>
+              <div className="w-full bg-zinc-800 h-2 rounded-full overflow-hidden">
+                <div className="bg-rose-500 h-full rounded-full transition-all duration-500" style={{ width: item.porcentaje }} />
               </div>
             </div>
           ))}
         </div>
       </div>
 
-      {/* Tarjeta de Exportación de Logs en CSV Real */}
       <div className="bg-zinc-950 border border-zinc-800 p-6 rounded-2xl space-y-4 flex flex-col justify-between">
         <div>
-          <h3 className="font-semibold text-base text-white">🚀 Exportación de Logs e Insights</h3>
-          <p className="text-xs text-slate-400 mt-1">Descarga el historial completo de conversaciones directamente desde tu base de datos en formato CSV estructurado.</p>
+          <h3 className="font-semibold text-base text-white">🚀 Informe de rendimiento</h3>
+          <p className="text-xs text-slate-400 mt-1">
+            Exporta las interacciones reales registradas por VortexAI para analizarlas fuera del dashboard.
+          </p>
         </div>
 
         <div className="bg-zinc-900/50 border border-zinc-800/80 p-4 rounded-xl space-y-3">
           <div className="flex items-center gap-2 text-rose-400 text-xs font-semibold">
-            <span>💡 Sincronización en Vivo</span>
+            <span>💡 Datos verificables</span>
           </div>
           <p className="text-[11px] text-slate-400 leading-relaxed">
-            El archivo descargado contendrá la fecha exacta, el remitente y los mensajes reales procesados por tu widget en producción.
+            La tasa de resolución se calcula sobre conversaciones identificadas y utiliza el estado real guardado por el asistente.
           </p>
         </div>
 
@@ -1447,7 +1521,7 @@ className="toggle accent-rose-500 cursor-pointer h-5 w-5 disabled:cursor-not-all
   };
 
   return (
-    <div className="max-w-5xl mx-auto p-6 text-white">
+    <div className="max-w-5xl mx-auto p-4 md:p-6 text-white">
       {/* Cabecera */}
       <div className="mb-8">
         <h1 className="text-2xl font-bold flex items-center gap-2">
@@ -1541,7 +1615,7 @@ className="toggle accent-rose-500 cursor-pointer h-5 w-5 disabled:cursor-not-all
   // Nota: Lo ideal es que 'logsConversaciones', 'cargandoLogs' y 'filtroRemitente' estén declarados arriba con los useState principales. Te dejo abajo cómo declararlos.
   
   return (
-    <div className="max-w-5xl mx-auto p-6 text-white space-y-6 animate-fadeIn">
+    <div className="max-w-5xl mx-auto p-4 md:p-6 text-white space-y-6 animate-fadeIn">
       {/* Cabecera */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>

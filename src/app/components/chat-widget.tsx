@@ -25,6 +25,10 @@ export default function ChatWidget({
   // ============================================================
 
 const [visitorId, setVisitorId] = useState<string | null>(null)
+
+  // Identificador estable de la conversación actual. Se mantiene
+  // durante la sesión para que varios mensajes formen una sola conversación.
+  const conversationIdRef = useRef<string | null>(null)
   // ============================================================
   // EXIT INTENT
   // ============================================================
@@ -265,17 +269,32 @@ const [visitorId, setVisitorId] = useState<string | null>(null)
   }, [cargarConfiguracion])
 
   // ============================================================
-  // MODO PREVIEW
+  // CONVERSACIÓN ACTUAL
   // ============================================================
-  // En el Overview el mismo ChatWidget se muestra abierto y ocupa
-  // todo el contenedor. Usa exactamente el mismo backend y configuración.
+
   useEffect(() => {
-    if (modoPreview) {
-      setAbierto(true)
+    if (typeof window === 'undefined' || !idActual) return
+
+    const storageKey =
+      `vortexai_conversation_${String(idActual)}`
+
+    try {
+      const guardada =
+        window.sessionStorage.getItem(storageKey)
+
+      if (guardada) {
+        conversationIdRef.current = guardada
+      } else {
+        const nueva = crypto.randomUUID()
+        conversationIdRef.current = nueva
+        window.sessionStorage.setItem(storageKey, nueva)
+      }
+    } catch {
+      conversationIdRef.current = crypto.randomUUID()
     }
-  }, [modoPreview])
+  }, [idActual])
 
-
+  // ============================================================
 // COMPROBAR CARRITO ABANDONADO AL ENTRAR
 // ============================================================
 
@@ -537,6 +556,8 @@ useEffect(() => {
                 idActual,
               visitorId:
                 visitorId,
+              conversationId:
+                conversationIdRef.current,
               fallbackIntentos:
                 fallbackIntentos
             })
@@ -545,6 +566,20 @@ useEffect(() => {
 
       const data =
         await res.json()
+
+      if (data.conversationId) {
+        conversationIdRef.current =
+          data.conversationId
+
+        try {
+          window.sessionStorage.setItem(
+            `vortexai_conversation_${String(idActual)}`,
+            data.conversationId
+          )
+        } catch {
+          // sessionStorage puede estar bloqueado en algunos navegadores.
+        }
+      }
 
       if (!res.ok) {
         throw new Error(
@@ -708,15 +743,13 @@ useEffect(() => {
   // POSICIÓN DEL WIDGET
   // ============================================================
 
-  const posicionContenedor = modoPreview
-    ? 'relative w-full h-full'
-    : posicion === 'izquierda'
+  const posicionContenedor =
+    posicion === 'izquierda'
       ? 'fixed bottom-4 left-4'
       : 'fixed bottom-4 right-4'
 
-  const posicionVentana = modoPreview
-    ? ''
-    : posicion === 'izquierda'
+  const posicionVentana =
+    posicion === 'izquierda'
       ? 'left-0'
       : 'right-0'
 
@@ -806,10 +839,7 @@ useEffect(() => {
       {abierto && (
 
         <div
-          className={modoPreview
-            ? 'relative w-full h-full bg-white border border-gray-200 rounded-xl shadow-2xl flex flex-col overflow-hidden'
-            : `absolute bottom-20 ${posicionVentana} w-80 h-96 bg-white border border-gray-200 rounded-2xl shadow-2xl flex flex-col overflow-hidden animate-in fade-in slide-in-from-bottom-3 duration-200`
-          }
+          className={`absolute bottom-20 ${posicionVentana} w-[min(20rem,calc(100vw-1rem))] h-[min(24rem,calc(100vh-6rem))] max-h-[calc(100vh-6rem)] bg-white border border-gray-200 rounded-2xl shadow-2xl flex flex-col overflow-hidden animate-in fade-in slide-in-from-bottom-3 duration-200`}
         >
 
           {/* ==================================================
@@ -972,7 +1002,7 @@ useEffect(() => {
                       )
                     }
                     placeholder="Tu nombre"
-                    className="w-full border border-gray-300 rounded-xl px-3 py-2 text-xs text-gray-900 placeholder:text-gray-400 focus:outline-none"
+                    className="w-full border border-gray-300 rounded-xl px-3 py-2 text-xs focus:outline-none"
                   />
 
                   <input
@@ -991,7 +1021,7 @@ useEffect(() => {
                       )
                     }
                     placeholder="Tu email"
-                    className="w-full border border-gray-300 rounded-xl px-3 py-2 text-xs text-gray-900 placeholder:text-gray-400 focus:outline-none"
+                    className="w-full border border-gray-300 rounded-xl px-3 py-2 text-xs focus:outline-none"
                   />
 
                   <textarea
@@ -1010,7 +1040,7 @@ useEffect(() => {
                       )
                     }
                     placeholder="¿En qué podemos ayudarte?"
-                    className="w-full border border-gray-300 rounded-xl px-3 py-2 text-xs text-gray-900 placeholder:text-gray-400 focus:outline-none resize-none"
+                    className="w-full border border-gray-300 rounded-xl px-3 py-2 text-xs focus:outline-none resize-none"
                   />
 
                   <button
@@ -1048,7 +1078,7 @@ useEffect(() => {
                 )
               }
               placeholder="Escribe tu mensaje..."
-              className="flex-1 border border-gray-300 rounded-xl px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none"
+              className="flex-1 border border-gray-300 rounded-xl px-3 py-2 text-sm focus:outline-none"
               style={{
                 borderColor:
                   colorPrimario
@@ -1077,7 +1107,6 @@ useEffect(() => {
           BOTÓN DEL CHAT
       ====================================================== */}
 
-      {!modoPreview && (
       <button
         onClick={() => {
 
@@ -1101,7 +1130,6 @@ useEffect(() => {
           : renderAvatarContent(false)}
 
       </button>
-      )}
 
     </div>
   )
