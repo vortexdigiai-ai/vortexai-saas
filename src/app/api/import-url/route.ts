@@ -1,214 +1,237 @@
-import { NextResponse } from 'next/server'
-import { createClient } from '@supabase/supabase-js'
-
-export const maxDuration = 60
+import { NextResponse } from 'next/server';
+import { createClient } from '@supabase/supabase-js';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
-)
+);
+
+// Vercel/Next.js puede limitar la duración real según el plan.
+// Este valor permite que el runtime utilice hasta 60 s cuando el entorno lo permita.
+export const maxDuration = 60;
+
+const USER_AGENT =
+  'Mozilla/5.0 (compatible; VortexAI/1.0; +https://vortexaiofficial.vercel.app)';
+
+const MAX_PRODUCTOS = 10000;
+const MAX_SITEMAPS = 30;
+const MAX_URLS_SITEMAP = 10000;
+const MAX_CONCURRENTES = 12;
+const TIMEOUT_PAGINA_MS = 10000;
 
 // ============================================================
-// CONFIGURACIÓN
+// TIPOS
 // ============================================================
 
-// Shopify
-const SHOPIFY_PRODUCTS_PER_PAGE = 250
-const MAX_SHOPIFY_PRODUCTS = 10000
-
-// Sitemaps
-const MAX_SITEMAPS = 50
-const MAX_SITEMAP_PRODUCT_URLS = 10000
-
-// Para no provocar demasiadas peticiones simultáneas
-const MAX_CONCURRENT_PRODUCT_PAGES = 12
-
-// Número de productos que intentaremos enriquecer
-// descargando su página individual.
-// Los productos que no se puedan enriquecer igualmente
-// se conservan usando su URL y un nombre generado.
-const MAX_ENRICH_PRODUCT_PAGES = 1500
+type Producto = Record<string, any>;
 
 // ============================================================
 // UTILIDADES
 // ============================================================
 
-function esperar(ms: number) {
-  return new Promise((resolve) => {
-    setTimeout(resolve, ms)
-  })
+function normalizarUrl(url: string, baseUrl?: string): string {
+  try {
+    const absoluta = new URL(
+      url,
+      baseUrl || undefined
+    );
+
+    absoluta.hash = '';
+    absoluta.search = '';
+
+    return absoluta.toString();
+  } catch {
+    return '';
+  }
 }
 
-// ============================================================
-// DESCARGAR URL CON TIMEOUT Y REINTENTOS
-// ============================================================
+function nombreDesdeUrl(url: string): string {
+  try {
+    const pathname = new URL(url).pathname;
+    const ultimo = pathname
+      .split('/')
+      .filter(Boolean)
+      .pop();
+
+    if (!ultimo) {
+      return 'Producto';
+    }
+
+    return decodeURIComponent(ultimo)
+      .replace(/\.(html?|php)$/i, '')
+      .replace(/[-_]+/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .replace(/\b\w/g, (letra) => letra.toUpperCase());
+  } catch {
+    return 'Producto';
+  }
+}
+
+function esperar(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
 async function descargarTexto(
   url: string,
-  timeoutMs = 12000,
-  reintentos = 2
+  timeoutMs = TIMEOUT_PAGINA_MS,
+  reintentos = 1
 ): Promise<{
-  ok: boolean
-  status: number
-  text: string
-  contentType: string
+  ok: boolean;
+  text: string;
+  finalUrl: string;
+  status: number;
 }> {
+  let ultimoStatus = 0;
 
-  let ultimoError: unknown = null
-
-  for (
-    let intento = 0;
-    intento <= reintentos;
-    intento++
-  ) {
-
-    const controller = new AbortController()
+  for (let intento = 0; intento <= reintentos; intento++) {
+    const controller = new AbortController();
 
     const timeout = setTimeout(
       () => controller.abort(),
       timeoutMs
-    )
+    );
 
     try {
+      const response = await fetch(url, {
+        method: 'GET',
+        headers: {
+          'User-Agent': USER_AGENT,
+          Accept:
+            'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        },
+        cache: 'no-store',
+        redirect: 'follow',
+        signal: controller.signal,
+      });
 
-      const response = await fetch(
-        url,
-        {
-          method: 'GET',
+      ultimoStatus = response.status;
 
-          headers: {
-            'User-Agent':
-              'Mozilla/5.0 (compatible; VortexAI/2.0; +https://vortexaiofficial.vercel.app)',
-
-            Accept:
-              'text/html,application/xhtml+xml,application/xml,text/xml,application/json',
-
-            'Accept-Language':
-              'es-ES,es;q=0.9,en;q=0.8',
-
-            'Cache-Control':
-              'no-cache'
-          },
-
-          cache: 'no-store',
-
-          redirect: 'follow',
-
-          signal: controller.signal
+      if (!response.ok) {
+        if (
+          intento < reintentos &&
+          (response.status === 408 ||
+            response.status === 425 ||
+            response.status === 429 ||
+            response.status >= 500)
+        ) {
+          await esperar(250 * (intento + 1));
+          continue;
         }
-      )
 
-      const text =
-        await response.text()
-
-      // Reintentar errores temporales
-      if (
-        (
-          response.status === 429 ||
-          response.status === 500 ||
-          response.status === 502 ||
-          response.status === 503 ||
-          response.status === 504
-        ) &&
-        intento < reintentos
-      ) {
-
-        await esperar(
-          500 * (intento + 1)
-        )
-
-        continue
+        return {
+          ok: false,
+          text: '',
+          finalUrl: response.url || url,
+          status: response.status,
+        };
       }
+
+      const text = await response.text();
 
       return {
-        ok: response.ok,
-        status: response.status,
+        ok: true,
         text,
-        contentType:
-          response.headers.get(
-            'content-type'
-          ) || ''
-      }
-
-    } catch (error) {
-
-      ultimoError = error
-
+        finalUrl: response.url || url,
+        status: response.status,
+      };
+    } catch {
       if (intento < reintentos) {
-
-        await esperar(
-          500 * (intento + 1)
-        )
-
-        continue
+        await esperar(250 * (intento + 1));
+        continue;
       }
-
     } finally {
-
-      clearTimeout(timeout)
-
+      clearTimeout(timeout);
     }
   }
 
-  console.error(
-    'VortexAI: error descargando URL:',
-    url,
-    ultimoError
-  )
-
   return {
     ok: false,
-    status: 0,
     text: '',
-    contentType: ''
-  }
+    finalUrl: url,
+    status: ultimoStatus,
+  };
 }
 
 // ============================================================
-// NORMALIZAR URL
+// NORMALIZAR PRODUCTO
 // ============================================================
 
-function normalizarUrl(
-  url: string
-): string {
-
-  try {
-
-    const resultado =
-      new URL(url)
-
-    resultado.hash = ''
-    resultado.search = ''
-
-    return resultado
-      .toString()
-      .replace(/\/$/, '')
-
-  } catch {
-
-    return url
-      .split('?')[0]
-      .split('#')[0]
-      .replace(/\/$/, '')
+function normalizarProducto(
+  item: any,
+  urlFallback = ''
+): Producto | null {
+  if (!item || typeof item !== 'object') {
+    return null;
   }
-}
 
-// ============================================================
-// DECODIFICAR HTML BÁSICO
-// ============================================================
+  const ofertas = Array.isArray(item.offers)
+    ? item.offers[0]
+    : item.offers || {};
 
-function decodificarHtml(
-  texto: string
-): string {
+  const imagenRaw = Array.isArray(item.image)
+    ? item.image[0]
+    : item.image || '';
 
-  return texto
-    .replace(/&amp;/gi, '&')
-    .replace(/&quot;/gi, '"')
-    .replace(/&#39;/gi, "'")
-    .replace(/&#x27;/gi, "'")
-    .replace(/&lt;/gi, '<')
-    .replace(/&gt;/gi, '>')
-    .replace(/&nbsp;/gi, ' ')
+  const imagen =
+    typeof imagenRaw === 'string'
+      ? imagenRaw
+      : imagenRaw?.url || '';
+
+  const marca =
+    typeof item.brand === 'object'
+      ? item.brand?.name || ''
+      : item.brand || '';
+
+  const url =
+    normalizarUrl(
+      String(item.url || '').trim(),
+      urlFallback
+    ) || urlFallback;
+
+  const nombre = String(
+    item.name || ''
+  ).trim();
+
+  if (!nombre && !url) {
+    return null;
+  }
+
+  return {
+    nombre:
+      nombre || nombreDesdeUrl(url),
+
+    descripcion:
+      typeof item.description === 'string'
+        ? item.description.trim()
+        : '',
+
+    imagen:
+      typeof imagen === 'string'
+        ? imagen
+        : '',
+
+    url,
+
+    sku:
+      String(item.sku || '').trim(),
+
+    marca:
+      String(marca || '').trim(),
+
+    precio:
+      ofertas?.price ??
+      ofertas?.lowPrice ??
+      '',
+
+    moneda:
+      ofertas?.priceCurrency ||
+      '',
+
+    disponibilidad:
+      ofertas?.availability ||
+      '',
+  };
 }
 
 // ============================================================
@@ -216,487 +239,224 @@ function decodificarHtml(
 // ============================================================
 
 function extraerProductosJSONLD(
-  html: string
-): Record<string, any>[] {
-
-  const productos: Record<string, any>[] = []
+  html: string,
+  baseUrl = ''
+): Producto[] {
+  const productos: Producto[] = [];
 
   const regex =
-    /<script[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi
+    /<script[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi;
 
-  let match
+  let match: RegExpExecArray | null;
 
   while (
     (match = regex.exec(html)) !== null
   ) {
-
     try {
-
-      const contenido =
-        match[1].trim()
+      const contenido = match[1]
+        .trim()
+        // Algunos sitios incluyen comentarios HTML dentro del JSON-LD.
+        .replace(/^<!--/, '')
+        .replace(/-->$/, '')
+        .trim();
 
       if (!contenido) {
-        continue
+        continue;
       }
 
-      const datos =
-        JSON.parse(contenido)
+      const datos = JSON.parse(contenido);
 
-      const procesar = (
-        item: any
-      ) => {
-
-        if (
-          !item ||
-          typeof item !== 'object'
-        ) {
-          return
+      const procesar = (item: any): void => {
+        if (!item) {
+          return;
         }
 
-        // ======================================================
-        // PRODUCT
-        // ======================================================
+        if (Array.isArray(item)) {
+          item.forEach(procesar);
+          return;
+        }
 
-        const tipos =
-          Array.isArray(item['@type'])
-            ? item['@type']
-            : [item['@type']]
+        if (typeof item !== 'object') {
+          return;
+        }
+
+        const tipos = Array.isArray(item['@type'])
+          ? item['@type']
+          : [item['@type']];
 
         if (
-          tipos.includes('Product')
+          tipos.some(
+            (tipo: any) =>
+              String(tipo).toLowerCase() === 'product'
+          )
         ) {
+          const producto =
+            normalizarProducto(
+              item,
+              baseUrl
+            );
 
-          let precio = ''
-
-          let moneda = ''
-
-          let disponibilidad = ''
-
-          if (
-            item.offers &&
-            typeof item.offers === 'object'
-          ) {
-
-            if (
-              Array.isArray(item.offers)
-            ) {
-
-              const oferta =
-                item.offers[0]
-
-              precio =
-                oferta?.price ||
-                oferta?.lowPrice ||
-                ''
-
-              moneda =
-                oferta?.priceCurrency ||
-                ''
-
-              disponibilidad =
-                oferta?.availability ||
-                ''
-
-            } else {
-
-              precio =
-                item.offers.price ||
-                item.offers.lowPrice ||
-                ''
-
-              moneda =
-                item.offers.priceCurrency ||
-                ''
-
-              disponibilidad =
-                item.offers.availability ||
-                ''
-            }
+          if (producto) {
+            productos.push(producto);
           }
-
-          const imagen =
-            Array.isArray(item.image)
-              ? item.image[0]
-              : item.image || ''
-
-          productos.push({
-
-            nombre:
-              String(
-                item.name || ''
-              ).trim(),
-
-            descripcion:
-              String(
-                item.description || ''
-              ).trim(),
-
-            imagen:
-              typeof imagen === 'string'
-                ? imagen
-                : imagen?.url || '',
-
-            url:
-              String(
-                item.url || ''
-              ).trim(),
-
-            sku:
-              String(
-                item.sku || ''
-              ).trim(),
-
-            marca:
-              typeof item.brand === 'object'
-                ? String(
-                    item.brand?.name || ''
-                  )
-                : String(
-                    item.brand || ''
-                  ),
-
-            precio:
-              precio,
-
-            moneda:
-              moneda,
-
-            disponibilidad:
-              disponibilidad
-          })
-
-          return
         }
 
-        // ======================================================
-        // @GRAPH
-        // ======================================================
-
-        if (
-          Array.isArray(
-            item['@graph']
-          )
-        ) {
-
-          item['@graph'].forEach(
-            procesar
-          )
+        if (Array.isArray(item['@graph'])) {
+          item['@graph'].forEach(procesar);
         }
 
-        // ======================================================
-        // ITEM LIST
-        // ======================================================
+        // Algunos CMS meten Product dentro de otras propiedades.
+        if (
+          item.mainEntity &&
+          typeof item.mainEntity === 'object'
+        ) {
+          procesar(item.mainEntity);
+        }
 
         if (
-          Array.isArray(
-            item.itemListElement
-          )
+          item.item &&
+          typeof item.item === 'object'
         ) {
+          procesar(item.item);
+        }
 
+        if (
+          item.itemListElement &&
+          Array.isArray(item.itemListElement)
+        ) {
           item.itemListElement.forEach(
-            (elemento: any) => {
-
-              if (
-                elemento?.item
-              ) {
-                procesar(
-                  elemento.item
-                )
-              } else {
-                procesar(
-                  elemento
-                )
-              }
-            }
-          )
+            procesar
+          );
         }
-      }
+      };
 
-      if (
-        Array.isArray(datos)
-      ) {
-
-        datos.forEach(
-          procesar
-        )
-
-      } else {
-
-        procesar(
-          datos
-        )
-      }
-
+      procesar(datos);
     } catch {
-      // Algunos JSON-LD de las webs no son válidos.
-      // No deben romper la importación.
+      // Un bloque JSON-LD inválido no debe impedir procesar los demás.
     }
   }
 
-  return productos
+  return productos;
 }
 
 // ============================================================
-// EXTRAER ENLACES DE PRODUCTOS
+// EXTRAER ENLACES DE PRODUCTOS DEL HTML
 // ============================================================
 
 function extraerEnlacesProductos(
   html: string,
   baseUrl: string
-): Record<string, any>[] {
-
-  const productos: Record<string, any>[] = []
-
-  const vistos =
-    new Set<string>()
-
-  // Shopify / WooCommerce / BigCommerce
-  const patrones = [
-    /<a[^>]+href=["']([^"']*\/products?\/[^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi,
-    /<a[^>]+href=["']([^"']*\/product\/[^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi,
-    /<a[^>]+href=["']([^"']*\/p\/[^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi
-  ]
-
-  for (
-    const regex of patrones
-  ) {
-
-    let match
-
-    while (
-      (match = regex.exec(html)) !== null
-    ) {
-
-      try {
-
-        const href =
-          match[1]
-
-        const contenido =
-          match[2]
-
-        const urlProducto =
-          new URL(
-            href,
-            baseUrl
-          ).toString()
-
-        const urlLimpia =
-          normalizarUrl(
-            urlProducto
-          )
-
-        if (
-          vistos.has(
-            urlLimpia
-          )
-        ) {
-          continue
-        }
-
-        vistos.add(
-          urlLimpia
-        )
-
-        const nombre =
-          decodificarHtml(
-            contenido
-              .replace(
-                /<[^>]*>/g,
-                ' '
-              )
-              .replace(
-                /\s+/g,
-                ' '
-              )
-              .trim()
-          )
-
-        if (!nombre) {
-          continue
-        }
-
-        productos.push({
-
-          nombre,
-
-          descripcion:
-            '',
-
-          imagen:
-            '',
-
-          url:
-            urlLimpia,
-
-          sku:
-            '',
-
-          marca:
-            '',
-
-          precio:
-            '',
-
-          moneda:
-            '',
-
-          disponibilidad:
-            ''
-        })
-
-      } catch {
-        // Ignorar enlace inválido
-      }
-    }
-  }
-
-  return productos
-}
-
-// ============================================================
-// ELIMINAR DUPLICADOS
-// ============================================================
-
-function eliminarDuplicados(
-  productos: Record<string, any>[]
-): Record<string, any>[] {
-
-  const vistos =
-    new Set<string>()
-
-  return productos.filter(
-    (producto) => {
-
-      const url =
-        String(
-          producto.url || ''
-        ).trim()
-
-      const sku =
-        String(
-          producto.sku || ''
-        ).trim()
-
-      const nombre =
-        String(
-          producto.nombre || ''
-        ).trim()
-
-      const clave =
-        normalizarUrl(
-          url
-        ) ||
-        sku.toLowerCase() ||
-        nombre.toLowerCase()
-
-      if (!clave) {
-        return false
-      }
-
-      if (
-        vistos.has(
-          clave
-        )
-      ) {
-        return false
-      }
-
-      vistos.add(
-        clave
-      )
-
-      return true
-    }
-  )
-}
-
-// ============================================================
-// EXTRAER NOMBRE DESDE URL
-// ============================================================
-
-function nombreDesdeUrl(
-  url: string
-): string {
-
-  try {
-
-    const urlObj =
-      new URL(url)
-
-    const partes =
-      urlObj.pathname
-        .split('/')
-        .filter(Boolean)
-
-    const ultimo =
-      partes[partes.length - 1] || ''
-
-    const limpio =
-      decodeURIComponent(
-        ultimo
-      )
-        .replace(
-          /\.(html?|php)$/i,
-          ''
-        )
-        .replace(
-          /[-_]+/g,
-          ' '
-        )
-        .replace(
-          /\s+/g,
-          ' '
-        )
-        .trim()
-
-    if (!limpio) {
-      return 'Producto'
-    }
-
-    return limpio
-      .replace(
-        /\b\w/g,
-        (letra) =>
-          letra.toUpperCase()
-      )
-
-  } catch {
-
-    return 'Producto'
-  }
-}
-
-// ============================================================
-// EXTRAER <loc> DE SITEMAPS
-// ============================================================
-
-function extraerLocsXML(
-  xml: string
-): string[] {
-
-  const urls: string[] = []
+): Producto[] {
+  const productos: Producto[] = [];
+  const vistos = new Set<string>();
 
   const regex =
-    /<loc[^>]*>([\s\S]*?)<\/loc>/gi
+    /<a\b[^>]*href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;
 
-  let match
+  let match: RegExpExecArray | null;
+
+  while (
+    (match = regex.exec(html)) !== null
+  ) {
+    try {
+      const href = match[1];
+
+      const urlProducto =
+        normalizarUrl(href, baseUrl);
+
+      if (!urlProducto) {
+        continue;
+      }
+
+      const urlObj =
+        new URL(urlProducto);
+
+      const path =
+        urlObj.pathname.toLowerCase();
+
+      // Shopify / WooCommerce y rutas habituales.
+      const pareceProducto =
+        path.includes('/products/') ||
+        path.includes('/product/') ||
+        path.includes('/producto/') ||
+        path.includes('/shop/');
+
+      if (!pareceProducto) {
+        continue;
+      }
+
+      const urlLimpia =
+        urlProducto.split('?')[0];
+
+      if (vistos.has(urlLimpia)) {
+        continue;
+      }
+
+      vistos.add(urlLimpia);
+
+      const contenido =
+        match[2]
+          .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+          .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+          .replace(/<[^>]*>/g, ' ')
+          .replace(/&nbsp;/gi, ' ')
+          .replace(/&amp;/gi, '&')
+          .replace(/\s+/g, ' ')
+          .trim();
+
+      const nombre =
+        contenido ||
+        nombreDesdeUrl(urlLimpia);
+
+      productos.push({
+        nombre,
+        descripcion: '',
+        imagen: '',
+        url: urlLimpia,
+        sku: '',
+        marca: '',
+        precio: '',
+        moneda: '',
+        disponibilidad: '',
+      });
+    } catch {
+      // Ignorar enlaces inválidos.
+    }
+  }
+
+  return productos;
+}
+
+// ============================================================
+// EXTRAER URLS DE SITEMAP XML
+// ============================================================
+
+function extraerLocsXML(xml: string): string[] {
+  const urls: string[] = [];
+
+  const regex =
+    /<loc[^>]*>\s*([\s\S]*?)\s*<\/loc>/gi;
+
+  let match: RegExpExecArray | null;
 
   while (
     (match = regex.exec(xml)) !== null
   ) {
-
-    const valor =
-      decodificarHtml(
-        match[1].trim()
-      )
+    const valor = match[1]
+      .replace(/<!\[CDATA\[/g, '')
+      .replace(/\]\]>/g, '')
+      .trim();
 
     if (valor) {
-      urls.push(valor)
+      urls.push(valor);
     }
   }
 
-  return urls
+  return urls;
+}
+
+function esSitemapIndice(xml: string): boolean {
+  return /<sitemapindex\b/i.test(xml);
 }
 
 // ============================================================
@@ -704,317 +464,177 @@ function extraerLocsXML(
 // ============================================================
 
 async function descubrirSitemaps(
-  baseUrl: string
+  urlBase: string
 ): Promise<string[]> {
-
   const origen =
-    new URL(
-      baseUrl
-    ).origin
+    new URL(urlBase).origin;
 
-  const candidatos =
-    new Set<string>([
+  const candidatos = new Set<string>();
 
-      `${origen}/sitemap.xml`,
+  const robotsUrl =
+    `${origen}/robots.txt`;
 
-      `${origen}/sitemap_index.xml`,
+  const robots =
+    await descargarTexto(
+      robotsUrl,
+      8000,
+      1
+    );
 
-      `${origen}/sitemap_products.xml`,
-
-      `${origen}/sitemap_products_1.xml`,
-
-      `${origen}/sitemap_products_2.xml`,
-
-      `${origen}/sitemap_products_3.xml`,
-
-      `${origen}/sitemap_products_4.xml`,
-
-      `${origen}/sitemap_products_5.xml`,
-
-      `${origen}/product-sitemap.xml`,
-
-      `${origen}/products-sitemap.xml`
-    ])
-
-  try {
-
-    const robots =
-      await descargarTexto(
-        `${origen}/robots.txt`,
-        8000,
-        1
-      )
-
-    if (
-      robots.ok
+  if (robots.ok) {
+    for (
+      const linea of robots.text.split(/\r?\n/)
     ) {
-
-      for (
-        const linea of
-        robots.text.split(
-          /\r?\n/
-        )
+      if (
+        /^sitemap\s*:/i.test(linea)
       ) {
+        const valor =
+          linea
+            .split(':')
+            .slice(1)
+            .join(':')
+            .trim();
 
-        if (
-          /^\s*sitemap\s*:/i.test(
-            linea
-          )
-        ) {
+        const sitemap =
+          normalizarUrl(valor);
 
-          const sitemap =
-            linea
-              .replace(
-                /^\s*sitemap\s*:/i,
-                ''
-              )
-              .trim()
-
-          if (sitemap) {
-
-            candidatos.add(
-              sitemap
-            )
-          }
+        if (sitemap) {
+          candidatos.add(sitemap);
         }
       }
     }
-
-  } catch {
-    // robots.txt es opcional
   }
 
-  return Array.from(
-    candidatos
-  )
+  const habituales = [
+    '/sitemap.xml',
+    '/sitemap_index.xml',
+    '/sitemap-index.xml',
+    '/sitemap_products_1.xml',
+  ];
+
+  for (const ruta of habituales) {
+    candidatos.add(
+      `${origen}${ruta}`
+    );
+  }
+
+  return Array.from(candidatos);
 }
 
 // ============================================================
-// DETECTAR SI UNA URL PARECE DE PRODUCTO
+// RECORRER SITEMAPS
 // ============================================================
 
-function pareceUrlProducto(
-  url: string
-): boolean {
-
-  try {
-
-    const urlObj =
-      new URL(url)
-
-    const pathname =
-      urlObj.pathname.toLowerCase()
-
-    return (
-
-      /\/products?\//i.test(
-        pathname
-      ) ||
-
-      /\/product[/-]/i.test(
-        pathname
-      ) ||
-
-      /\/p\//i.test(
-        pathname
-      ) ||
-
-      /\/item\//i.test(
-        pathname
-      ) ||
-
-      /\/shop\/.+/i.test(
-        pathname
-      ) ||
-
-      /\/products?-/.test(
-        pathname
-      )
-    )
-
-  } catch {
-
-    return false
-  }
-}
-
-// ============================================================
-// DESCUBRIR PRODUCTOS MEDIANTE SITEMAPS
-// ============================================================
-
-async function descubrirProductosDesdeSitemaps(
-  baseUrl: string,
-  maxUrls = MAX_SITEMAP_PRODUCT_URLS
+async function obtenerUrlsDesdeSitemaps(
+  urlBase: string
 ): Promise<string[]> {
-
-  const sitemapsIniciales =
-    await descubrirSitemaps(
-      baseUrl
-    )
-
   const pendientes =
-    [...sitemapsIniciales]
+    await descubrirSitemaps(urlBase);
 
-  const visitados =
-    new Set<string>()
+  const procesados =
+    new Set<string>();
 
   const urlsProducto =
-    new Set<string>()
+    new Set<string>();
 
-  const hostnameBase =
-    new URL(
-      baseUrl
-    ).hostname
+  let indice = 0;
 
   while (
-
-    pendientes.length > 0 &&
-
-    urlsProducto.size <
-      maxUrls &&
-
-    visitados.size <
-      MAX_SITEMAPS
-
+    indice < pendientes.length &&
+    procesados.size < MAX_SITEMAPS &&
+    urlsProducto.size < MAX_URLS_SITEMAP
   ) {
+    const sitemap =
+      pendientes[indice++];
 
-    const sitemapUrl =
-      pendientes.shift()!
-
-    const sitemapNormalizado =
-      normalizarUrl(
-        sitemapUrl
-      )
-
-    if (
-      visitados.has(
-        sitemapNormalizado
-      )
-    ) {
-      continue
+    if (procesados.has(sitemap)) {
+      continue;
     }
 
-    visitados.add(
-      sitemapNormalizado
-    )
+    procesados.add(sitemap);
 
-    try {
+    const respuesta =
+      await descargarTexto(
+        sitemap,
+        10000,
+        1
+      );
 
-      const respuesta =
-        await descargarTexto(
-          sitemapUrl,
-          12000,
-          2
-        )
+    if (
+      !respuesta.ok ||
+      !respuesta.text.trim()
+    ) {
+      continue;
+    }
 
-      if (
-        !respuesta.ok ||
-        !respuesta.text.trim()
-      ) {
-        continue
-      }
+    const locs =
+      extraerLocsXML(
+        respuesta.text
+      );
 
-      const locs =
-        extraerLocsXML(
-          respuesta.text
-        )
-
-      const sitemapEsDeProductos =
-        /product/i.test(
-          sitemapUrl
-        )
-
-      for (
-        const loc of locs
-      ) {
-
+    if (
+      esSitemapIndice(
+        respuesta.text
+      )
+    ) {
+      for (const loc of locs) {
         if (
-          urlsProducto.size >=
-          maxUrls
+          pendientes.length >=
+          MAX_SITEMAPS * 5
         ) {
-          break
+          break;
         }
 
         const normalizada =
-          normalizarUrl(
-            loc
-          )
-
-        if (!normalizada) {
-          continue
-        }
-
-        // ======================================================
-        // SITEMAP INDEX
-        // ======================================================
+          normalizarUrl(loc);
 
         if (
-
-          /sitemap/i.test(
-            normalizada
-          ) ||
-
-          /\.xml($|\?)/i.test(
-            normalizada
-          )
-
+          normalizada &&
+          !procesados.has(normalizada) &&
+          !pendientes.includes(normalizada)
         ) {
-
-          if (
-            !visitados.has(
-              normalizada
-            )
-          ) {
-
-            pendientes.push(
-              normalizada
-            )
-          }
-
-          continue
-        }
-
-        // ======================================================
-        // MISMA TIENDA
-        // ======================================================
-
-        try {
-
-          const urlObj =
-            new URL(
-              normalizada
-            )
-
-          if (
-            urlObj.hostname !==
-            hostnameBase
-          ) {
-            continue
-          }
-
-          // ====================================================
-          // PRODUCTO
-          // ====================================================
-
-          if (
-            sitemapEsDeProductos ||
-            pareceUrlProducto(
-              normalizada
-            )
-          ) {
-
-            urlsProducto.add(
-              normalizada
-            )
-          }
-
-        } catch {
-          // URL inválida
+          pendientes.push(
+            normalizada
+          );
         }
       }
 
-    } catch {
-      // Un sitemap fallido no debe detener el resto
+      continue;
+    }
+
+    for (const loc of locs) {
+      if (
+        urlsProducto.size >=
+        MAX_URLS_SITEMAP
+      ) {
+        break;
+      }
+
+      const normalizada =
+        normalizarUrl(loc);
+
+      if (!normalizada) {
+        continue;
+      }
+
+      const path =
+        new URL(normalizada)
+          .pathname
+          .toLowerCase();
+
+      // Los sitemaps de producto de Shopify suelen
+      // contener /products/. Para otros CMS aceptamos
+      // rutas comunes de producto.
+      if (
+        path.includes('/products/') ||
+        path.includes('/product/') ||
+        path.includes('/producto/') ||
+        path.includes('/shop/')
+      ) {
+        urlsProducto.add(
+          normalizada
+        );
+      }
     }
   }
 
@@ -1022,623 +642,369 @@ async function descubrirProductosDesdeSitemaps(
     urlsProducto
   ).slice(
     0,
-    maxUrls
-  )
+    MAX_URLS_SITEMAP
+  );
 }
 
 // ============================================================
-// ENRIQUECER PRODUCTOS DESDE SUS PÁGINAS
+// EXTRAER PRODUCTOS DESDE URLS
 // ============================================================
 
 async function extraerProductosDesdeUrls(
   urls: string[],
-  maxConcurrentes =
-    MAX_CONCURRENT_PRODUCT_PAGES
-): Promise<Record<string, any>[]> {
-
-  const productos:
-    Record<string, any>[] = []
+  maxConcurrentes = MAX_CONCURRENTES
+): Promise<Producto[]> {
+  const productos: Producto[] = [];
 
   for (
     let inicio = 0;
     inicio < urls.length;
     inicio += maxConcurrentes
   ) {
-
     const lote =
       urls.slice(
         inicio,
         inicio + maxConcurrentes
-      )
+      );
 
     const resultados =
       await Promise.all(
-
         lote.map(
           async (url) => {
-
             try {
-
               const respuesta =
                 await descargarTexto(
                   url,
-                  8000,
+                  TIMEOUT_PAGINA_MS,
                   1
-                )
+                );
 
               if (
                 !respuesta.ok ||
                 !respuesta.text.trim()
               ) {
-
-                // Aunque no podamos leer la página,
-                // conservamos el producto.
-                return [{
-                  nombre:
-                    nombreDesdeUrl(
-                      url
-                    ),
-
-                  descripcion:
-                    '',
-
-                  imagen:
-                    '',
-
-                  url:
+                return [
+                  {
+                    nombre:
+                      nombreDesdeUrl(url),
+                    descripcion: '',
+                    imagen: '',
                     url,
-
-                  sku:
-                    '',
-
-                  marca:
-                    '',
-
-                  precio:
-                    '',
-
-                  moneda:
-                    '',
-
-                  disponibilidad:
-                    ''
-                }]
-
+                    sku: '',
+                    marca: '',
+                    precio: '',
+                    moneda: '',
+                    disponibilidad: '',
+                  },
+                ];
               }
 
               const encontrados =
                 extraerProductosJSONLD(
-                  respuesta.text
-                )
+                  respuesta.text,
+                  respuesta.finalUrl || url
+                );
 
               if (
                 encontrados.length > 0
               ) {
-
-                return encontrados
+                return encontrados;
               }
 
-              // Fallback: producto mínimo
-              return [{
-                nombre:
-                  nombreDesdeUrl(
-                    url
-                  ),
-
-                descripcion:
-                  '',
-
-                imagen:
-                  '',
-
-                url:
+              return [
+                {
+                  nombre:
+                    nombreDesdeUrl(url),
+                  descripcion: '',
+                  imagen: '',
                   url,
-
-                sku:
-                  '',
-
-                marca:
-                  '',
-
-                precio:
-                  '',
-
-                moneda:
-                  '',
-
-                disponibilidad:
-                  ''
-              }]
-
+                  sku: '',
+                  marca: '',
+                  precio: '',
+                  moneda: '',
+                  disponibilidad: '',
+                },
+              ];
             } catch {
-
-              return [{
-                nombre:
-                  nombreDesdeUrl(
-                    url
-                  ),
-
-                descripcion:
-                  '',
-
-                imagen:
-                  '',
-
-                url:
+              return [
+                {
+                  nombre:
+                    nombreDesdeUrl(url),
+                  descripcion: '',
+                  imagen: '',
                   url,
-
-                sku:
-                  '',
-
-                marca:
-                  '',
-
-                precio:
-                  '',
-
-                moneda:
-                  '',
-
-                disponibilidad:
-                  ''
-              }]
+                  sku: '',
+                  marca: '',
+                  precio: '',
+                  moneda: '',
+                  disponibilidad: '',
+                },
+              ];
             }
           }
         )
-      )
+      );
 
     for (
-      const resultado of
-      resultados
+      const resultado of resultados
     ) {
-
       productos.push(
         ...resultado
-      )
+      );
+
+      if (
+        productos.length >=
+        MAX_PRODUCTOS
+      ) {
+        return productos.slice(
+          0,
+          MAX_PRODUCTOS
+        );
+      }
     }
 
-    // Pequeña pausa
-    await esperar(50)
+    // Pequeña pausa para no bombardear el servidor de la tienda.
+    await esperar(50);
   }
 
-  return productos
+  return productos;
 }
 
 // ============================================================
-// DETECTAR SHOPIFY
+// SHOPIFY: PRODUCTOS.JSON
 // ============================================================
 
-function detectarShopify(
-  html: string
-): boolean {
-
-  return (
-
-    /cdn\.shopify\.com/i.test(
-      html
-    ) ||
-
-    /Shopify\.theme/i.test(
-      html
-    ) ||
-
-    /shopify-section/i.test(
-      html
-    ) ||
-
-    /Shopify/i.test(
-      html
-    ) ||
-
-    /myshopify\.com/i.test(
-      html
-    )
-  )
-}
-
-// ============================================================
-// MAPEAR PRODUCTO SHOPIFY
-// ============================================================
-
-function mapearProductoShopify(
-  producto: any,
+function convertirShopifyProducto(
+  item: any,
   baseUrl: string
-): Record<string, any> {
-
-  const primeraVariante =
-    Array.isArray(
-      producto?.variants
-    )
-      ? producto.variants[0]
-      : null
+): Producto | null {
+  if (
+    !item ||
+    typeof item !== 'object'
+  ) {
+    return null;
+  }
 
   const imagen =
-    producto?.image?.src ||
+    item.image?.src ||
+    item.images?.[0]?.src ||
+    '';
 
-    producto?.featured_image ||
+  const variante =
+    Array.isArray(item.variants)
+      ? item.variants[0]
+      : null;
 
-    (
-      Array.isArray(
-        producto?.images
-      )
-        ? producto.images[0]?.src
-        : ''
-    ) ||
+  const url =
+    normalizarUrl(
+      `/products/${item.handle || ''}`,
+      baseUrl
+    );
 
-    ''
-
-  let url = ''
-
-  try {
-
-    url =
-      producto?.handle
-        ? new URL(
-            `/products/${producto.handle}`,
-            baseUrl
-          ).toString()
-        : producto?.url || ''
-
-  } catch {
-
-    url =
-      producto?.url || ''
+  if (
+    !url &&
+    !item.title
+  ) {
+    return null;
   }
 
   return {
-
     nombre:
-      producto?.title ||
-      producto?.name ||
-      '',
+      String(
+        item.title ||
+        nombreDesdeUrl(url)
+      ).trim(),
 
     descripcion:
-      producto?.body_html ||
-      producto?.description ||
-      '',
+      String(
+        item.body_html ||
+        item.bodyHtml ||
+        ''
+      )
+        .replace(/<[^>]*>/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim(),
 
-    imagen,
+    imagen:
+      String(imagen || ''),
 
     url,
 
     sku:
-      primeraVariante?.sku ||
-      '',
+      String(
+        variante?.sku ||
+        ''
+      ).trim(),
 
     marca:
-      producto?.vendor ||
-      '',
+      String(
+        item.vendor ||
+        ''
+      ).trim(),
 
     precio:
-      primeraVariante?.price ||
-      producto?.price ||
+      variante?.price ??
       '',
 
     moneda:
-      producto?.currency ||
       '',
 
     disponibilidad:
+      variante?.available === false
+        ? 'https://schema.org/OutOfStock'
+        : 'https://schema.org/InStock',
+  };
+}
 
-      primeraVariante?.available === true
-        ? 'https://schema.org/InStock'
+async function intentarShopify(
+  urlBase: string
+): Promise<Producto[]> {
+  const origen =
+    new URL(urlBase).origin;
 
-        : primeraVariante?.available === false
-          ? 'https://schema.org/OutOfStock'
+  const productos: Producto[] = [];
 
-          : ''
+  // Shopify expone /products.json. La consulta
+  // devuelve hasta 250 productos por página en tiendas
+  // que permiten este endpoint públicamente.
+  // Probamos varias páginas hasta que no haya más.
+  const limitePorPagina = 250;
+
+  for (
+    let pagina = 1;
+    pagina <= 40;
+    pagina++
+  ) {
+    if (
+      productos.length >=
+      MAX_PRODUCTOS
+    ) {
+      break;
+    }
+
+    const endpoint =
+      `${origen}/products.json?limit=${limitePorPagina}&page=${pagina}`;
+
+    const respuesta =
+      await descargarTexto(
+        endpoint,
+        10000,
+        1
+      );
+
+    if (
+      !respuesta.ok ||
+      !respuesta.text.trim()
+    ) {
+      break;
+    }
+
+    try {
+      const datos =
+        JSON.parse(
+          respuesta.text
+        );
+
+      if (
+        !Array.isArray(
+          datos.products
+        )
+      ) {
+        break;
+      }
+
+      const paginaProductos =
+        datos.products
+          .map(
+            (item: any) =>
+              convertirShopifyProducto(
+                item,
+                origen
+              )
+          )
+          .filter(
+            (
+              item: Producto | null
+            ): item is Producto =>
+              item !== null
+          );
+
+      productos.push(
+        ...paginaProductos
+      );
+
+      if (
+        datos.products.length <
+        limitePorPagina
+      ) {
+        break;
+      }
+    } catch {
+      break;
+    }
   }
+
+  return productos.slice(
+    0,
+    MAX_PRODUCTOS
+  );
 }
 
 // ============================================================
-// SHOPIFY: OBTENER CATÁLOGO COMPLETO
+// LIMPIAR DUPLICADOS
 // ============================================================
 
-async function intentarShopifyJson(
-  baseUrl: string,
-  maxProductos =
-    MAX_SHOPIFY_PRODUCTS
-): Promise<{
+function eliminarDuplicados(
+  productos: Producto[]
+): Producto[] {
+  const vistos =
+    new Set<string>();
 
-  productos:
-    Record<string, any>[]
+  return productos.filter(
+    (producto) => {
+      const url =
+        normalizarUrl(
+          String(
+            producto.url || ''
+          )
+        );
 
-  detectado:
-    boolean
+      const sku =
+        String(
+          producto.sku || ''
+        )
+          .trim()
+          .toLowerCase();
 
-  paginas:
-    number
+      const nombre =
+        String(
+          producto.nombre || ''
+        )
+          .trim()
+          .toLowerCase();
 
-  endpointUsado:
-    string | null
+      const clave =
+        url ||
+        (sku
+          ? `sku:${sku}`
+          : nombre
+            ? `nombre:${nombre}`
+            : '');
 
-  limiteAlcanzado:
-    boolean
-
-}> {
-
-  const endpoints = [
-
-    new URL(
-      '/products.json',
-      baseUrl
-    ).toString(),
-
-    new URL(
-      '/collections/all/products.json',
-      baseUrl
-    ).toString()
-  ]
-
-  let mejorResultado:
-    Record<string, any>[] = []
-
-  let mejorEndpoint:
-    string | null = null
-
-  let mejorPaginas = 0
-
-  let detectado = false
-
-  let limiteAlcanzado = false
-
-  for (
-    const endpointBase of
-    endpoints
-  ) {
-
-    const productos:
-      Record<string, any>[] = []
-
-    const vistos =
-      new Set<string>()
-
-    let endpointFuncionando =
-      false
-
-    let paginasProcesadas =
-      0
-
-    for (
-      let pagina = 1;
-
-      pagina <=
-      Math.ceil(
-        maxProductos /
-        SHOPIFY_PRODUCTS_PER_PAGE
-      );
-
-      pagina++
-    ) {
+      if (!clave) {
+        return false;
+      }
 
       if (
-        productos.length >=
-        maxProductos
+        vistos.has(clave)
       ) {
-
-        limiteAlcanzado =
-          true
-
-        break
+        return false;
       }
 
-      try {
-
-        const endpoint =
-          new URL(
-            endpointBase
-          )
-
-        endpoint.searchParams.set(
-          'limit',
-          String(
-            SHOPIFY_PRODUCTS_PER_PAGE
-          )
-        )
-
-        endpoint.searchParams.set(
-          'page',
-          String(
-            pagina
-          )
-        )
-
-        const respuesta =
-          await descargarTexto(
-            endpoint.toString(),
-            12000,
-            2
-          )
-
-        if (
-          !respuesta.ok
-        ) {
-
-          // Si la primera página no funciona,
-          // probamos el siguiente endpoint.
-          if (
-            pagina === 1
-          ) {
-            break
-          }
-
-          break
-        }
-
-        let datos: any
-
-        try {
-
-          datos =
-            JSON.parse(
-              respuesta.text
-            )
-
-        } catch {
-
-          break
-        }
-
-        if (
-          !Array.isArray(
-            datos?.products
-          )
-        ) {
-
-          break
-        }
-
-        detectado =
-          true
-
-        endpointFuncionando =
-          true
-
-        paginasProcesadas =
-          pagina
-
-        const productosPagina =
-          datos.products
-
-        if (
-          productosPagina.length === 0
-        ) {
-
-          break
-        }
-
-        let nuevos = 0
-
-        for (
-          const producto of
-          productosPagina
-        ) {
-
-          if (
-            productos.length >=
-            maxProductos
-          ) {
-
-            limiteAlcanzado =
-              true
-
-            break
-          }
-
-          const mapeado =
-            mapearProductoShopify(
-              producto,
-              baseUrl
-            )
-
-          const clave =
-            normalizarUrl(
-              mapeado.url || ''
-            ) ||
-
-            String(
-              mapeado.sku ||
-              mapeado.nombre ||
-              ''
-            )
-              .trim()
-              .toLowerCase()
-
-          if (
-            !clave ||
-            vistos.has(
-              clave
-            )
-          ) {
-            continue
-          }
-
-          vistos.add(
-            clave
-          )
-
-          productos.push(
-            mapeado
-          )
-
-          nuevos++
-        }
-
-        // Menos de 250 significa
-        // que hemos llegado al final.
-        if (
-          productosPagina.length <
-          SHOPIFY_PRODUCTS_PER_PAGE
-        ) {
-          break
-        }
-
-        // Si no aparecen productos nuevos,
-        // evitamos un bucle infinito.
-        if (
-          nuevos === 0
-        ) {
-          break
-        }
-
-        await esperar(50)
-
-      } catch (error) {
-
-        console.error(
-          'VortexAI: error leyendo Shopify:',
-          endpointBase,
-          pagina,
-          error
-        )
-
-        break
-      }
+      vistos.add(clave);
+      return true;
     }
-
-    if (
-      endpointFuncionando &&
-      productos.length > 0
-    ) {
-
-      // Nos quedamos con el resultado
-      // más completo.
-      if (
-        productos.length >
-        mejorResultado.length
-      ) {
-
-        mejorResultado =
-          productos
-
-        mejorEndpoint =
-          endpointBase
-
-        mejorPaginas =
-          paginasProcesadas
-      }
-
-      // Si hemos obtenido productos,
-      // no necesitamos probar el segundo
-      // endpoint salvo que haya obtenido más.
-    }
-  }
-
-  return {
-
-    productos:
-      mejorResultado,
-
-    detectado,
-
-    paginas:
-      mejorPaginas,
-
-    endpointUsado:
-      mejorEndpoint,
-
-    limiteAlcanzado
-  }
+  );
 }
 
 // ============================================================
@@ -1648,321 +1014,221 @@ async function intentarShopifyJson(
 export async function POST(
   req: Request
 ) {
-
   try {
-
-    // ========================================================
-    // RECIBIR DATOS
-    // ========================================================
-
     const body =
-      await req.json()
+      await req.json();
 
     const url =
       String(
         body.url || ''
-      ).trim()
+      ).trim();
 
     const userId =
       String(
         body.user_id || ''
-      ).trim()
+      ).trim();
 
     // ========================================================
     // VALIDACIONES
     // ========================================================
 
     if (!url) {
-
       return NextResponse.json(
         {
           error:
-            'Falta la URL de la tienda.'
+            'Falta la URL de la tienda.',
         },
         {
-          status: 400
+          status: 400,
         }
-      )
+      );
     }
 
     if (!userId) {
-
       return NextResponse.json(
         {
           error:
-            'Falta el identificador de la tienda.'
+            'Falta el identificador de la tienda.',
         },
         {
-          status: 400
+          status: 400,
         }
-      )
+      );
     }
 
-    // ========================================================
-    // NORMALIZAR URL
-    // ========================================================
-
     let urlFinal =
-      url
+      url;
 
     if (
-      !urlFinal.startsWith(
-        'http://'
-      ) &&
-      !urlFinal.startsWith(
-        'https://'
+      !/^https?:\/\//i.test(
+        urlFinal
       )
     ) {
-
       urlFinal =
-        `https://${urlFinal}`
+        `https://${urlFinal}`;
     }
 
     try {
-
       const urlObj =
-        new URL(
-          urlFinal
-        )
+        new URL(urlFinal);
 
       if (
-        urlObj.protocol !==
-          'http:' &&
-        urlObj.protocol !==
-          'https:'
-      ) {
-
-        return NextResponse.json(
-          {
-            error:
-              'La URL debe utilizar HTTP o HTTPS.'
-          },
-          {
-            status: 400
-          }
+        !['http:', 'https:'].includes(
+          urlObj.protocol
         )
+      ) {
+        throw new Error(
+          'Protocolo no permitido'
+        );
       }
 
+      urlFinal =
+        urlObj.toString();
     } catch {
-
       return NextResponse.json(
         {
           error:
-            'La URL introducida no es válida.'
+            'La URL introducida no es válida.',
         },
         {
-          status: 400
+          status: 400,
         }
-      )
+      );
     }
 
     // ========================================================
-    // DESCARGAR PÁGINA PRINCIPAL
+    // 1. INTENTAR SHOPIFY
     // ========================================================
 
-    const respuestaPrincipal =
+    let productos: Producto[] = [];
+
+    try {
+      productos =
+        await intentarShopify(
+          urlFinal
+        );
+    } catch (error) {
+      console.warn(
+        'VortexAI: Shopify no disponible, continuando con otros métodos:',
+        error
+      );
+    }
+
+    // ========================================================
+    // 2. DESCARGAR PÁGINA PRINCIPAL
+    // ========================================================
+
+    const paginaPrincipal =
       await descargarTexto(
         urlFinal,
-        15000,
-        2
-      )
-
-    const html =
-      respuestaPrincipal.text
-
-    const paginaPrincipalDisponible =
-      respuestaPrincipal.ok &&
-      html.trim().length > 0
-
-    // ========================================================
-    // PRODUCTOS
-    // ========================================================
-
-    let productos:
-      Record<string, any>[] = []
-
-    let shopifyResultado:
-      Awaited<
-        ReturnType<
-          typeof intentarShopifyJson
-        >
-      > | null = null
-
-    // ========================================================
-    // ESTRATEGIA 1
-    // SHOPIFY JSON API
-    //
-    // Lo intentamos siempre.
-    // Esto permite detectar tiendas Shopify
-    // incluso si la página principal está protegida.
-    // ========================================================
-
-    shopifyResultado =
-      await intentarShopifyJson(
-        urlFinal
-      )
+        TIMEOUT_PAGINA_MS,
+        1
+      );
 
     if (
-      shopifyResultado.productos.length >
-      0
+      paginaPrincipal.ok &&
+      paginaPrincipal.text.trim()
     ) {
+      const html =
+        paginaPrincipal.text;
 
-      productos =
-        shopifyResultado.productos
-    }
-
-    // ========================================================
-    // ESTRATEGIA 2
-    // JSON-LD DE LA HOME
-    // ========================================================
-
-    if (
-      productos.length === 0 &&
-      paginaPrincipalDisponible
-    ) {
-
-      productos =
-        extraerProductosJSONLD(
-          html
+      // JSON-LD de la página principal.
+      productos.push(
+        ...extraerProductosJSONLD(
+          html,
+          paginaPrincipal.finalUrl ||
+            urlFinal
         )
-    }
+      );
 
-    // ========================================================
-    // ESTRATEGIA 3
-    // SITEMAPS
-    //
-    // Muy importante para tiendas grandes.
-    // ========================================================
-
-    let urlsProductos:
-      string[] = []
-
-    if (
-      productos.length <
-      20
-    ) {
-
-      urlsProductos =
-        await descubrirProductosDesdeSitemaps(
-          urlFinal,
-          MAX_SITEMAP_PRODUCT_URLS
-        )
-
+      // Enlaces de productos como fallback.
       if (
-        urlsProductos.length >
-        0
+        productos.length < MAX_PRODUCTOS
       ) {
-
-        // ----------------------------------------------------
-        // Si tenemos pocos productos,
-        // enriquecemos páginas individuales.
-        // ----------------------------------------------------
-
-        const urlsParaEnriquecer =
-          urlsProductos.slice(
-            0,
-            MAX_ENRICH_PRODUCT_PAGES
-          )
-
-        const productosEnriquecidos =
-          await extraerProductosDesdeUrls(
-            urlsParaEnriquecer,
-            MAX_CONCURRENT_PRODUCT_PAGES
-          )
-
         productos.push(
-          ...productosEnriquecidos
-        )
-
-        // ----------------------------------------------------
-        // IMPORTANTE:
-        //
-        // Para las URLs restantes no necesitamos descargar
-        // una por una. Las añadimos como productos mínimos.
-        //
-        // Esto permite soportar catálogos enormes sin tener
-        // que realizar miles de peticiones HTTP.
-        // ----------------------------------------------------
-
-        if (
-          urlsProductos.length >
-          urlsParaEnriquecer.length
-        ) {
-
-          const urlsRestantes =
-            urlsProductos.slice(
-              MAX_ENRICH_PRODUCT_PAGES
-            )
-
-          for (
-            const urlProducto of
-            urlsRestantes
-          ) {
-
-            productos.push({
-
-              nombre:
-                nombreDesdeUrl(
-                  urlProducto
-                ),
-
-              descripcion:
-                '',
-
-              imagen:
-                '',
-
-              url:
-                urlProducto,
-
-              sku:
-                '',
-
-              marca:
-                '',
-
-              precio:
-                '',
-
-              moneda:
-                '',
-
-              disponibilidad:
-                ''
-            })
-          }
-        }
+          ...extraerEnlacesProductos(
+            html,
+            paginaPrincipal.finalUrl ||
+              urlFinal
+          )
+        );
       }
     }
-
-    // ========================================================
-    // ESTRATEGIA 4
-    // ENLACES DE LA PÁGINA PRINCIPAL
-    // ========================================================
-
-    if (
-      paginaPrincipalDisponible
-    ) {
-
-      const productosEnlaces =
-        extraerEnlacesProductos(
-          html,
-          urlFinal
-        )
-
-      productos.push(
-        ...productosEnlaces
-      )
-    }
-
-    // ========================================================
-    // LIMPIAR DUPLICADOS
-    // ========================================================
 
     productos =
       eliminarDuplicados(
         productos
-      )
+      );
+
+    // ========================================================
+    // 3. SITEMAP PARA CATÁLOGOS GRANDES
+    // ========================================================
+
+    if (
+      productos.length <
+        MAX_PRODUCTOS
+    ) {
+      try {
+        const urlsSitemap =
+          await obtenerUrlsDesdeSitemaps(
+            urlFinal
+          );
+
+        const urlsNuevas =
+          urlsSitemap.filter(
+            (urlProducto) =>
+              !productos.some(
+                (producto) =>
+                  normalizarUrl(
+                    String(
+                      producto.url ||
+                        ''
+                    )
+                  ) ===
+                  normalizarUrl(
+                    urlProducto
+                  )
+              )
+          );
+
+        const restantes =
+          Math.max(
+            0,
+            MAX_PRODUCTOS -
+              productos.length
+          );
+
+        if (
+          urlsNuevas.length > 0 &&
+          restantes > 0
+        ) {
+          const extraidos =
+            await extraerProductosDesdeUrls(
+              urlsNuevas.slice(
+                0,
+                restantes
+              )
+            );
+
+          productos.push(
+            ...extraidos
+          );
+        }
+      } catch (error) {
+        console.warn(
+          'VortexAI: error procesando sitemap:',
+          error
+        );
+      }
+    }
+
+    productos =
+      eliminarDuplicados(
+        productos
+      ).slice(
+        0,
+        MAX_PRODUCTOS
+      );
 
     // ========================================================
     // COMPROBAR RESULTADO
@@ -1971,29 +1237,20 @@ export async function POST(
     if (
       productos.length === 0
     ) {
-
-      let detalle =
-        ''
-
-      if (
-        respuestaPrincipal.status
-      ) {
-
-        detalle =
-          ` La página principal respondió con HTTP ${respuestaPrincipal.status}.`
-      }
+      const mensajePagina =
+        paginaPrincipal.ok
+          ? 'No se han encontrado productos automáticamente en esta tienda. Puede que la tienda cargue el catálogo mediante JavaScript o bloquee la extracción.'
+          : `No se pudo acceder a la tienda${paginaPrincipal.status ? ` (HTTP ${paginaPrincipal.status})` : ''}.`;
 
       return NextResponse.json(
         {
           error:
-            'No se han encontrado productos automáticamente.' +
-            detalle +
-            ' La tienda puede bloquear la extracción, requerir JavaScript, utilizar protección anti-bot o no exponer un catálogo público. Puedes utilizar el CSV.'
+            `${mensajePagina} Prueba con una URL de producto o utiliza el CSV.`,
         },
         {
-          status: 422
+          status: 422,
         }
-      )
+      );
     }
 
     // ========================================================
@@ -2002,38 +1259,33 @@ export async function POST(
 
     const {
       data: tiendaExistente,
-      error: buscarError
+      error: buscarError,
     } =
       await supabase
         .from('tiendas')
-        .select(
-          'user_id'
-        )
+        .select('user_id')
         .eq(
           'user_id',
           userId
         )
-        .maybeSingle()
+        .maybeSingle();
 
-    if (
-      buscarError
-    ) {
-
+    if (buscarError) {
       console.error(
         'VortexAI: error buscando tienda:',
         buscarError
-      )
+      );
 
       return NextResponse.json(
         {
           error:
             'Error buscando la tienda: ' +
-            buscarError.message
+            buscarError.message,
         },
         {
-          status: 500
+          status: 500,
         }
-      )
+      );
     }
 
     // ========================================================
@@ -2043,125 +1295,71 @@ export async function POST(
     if (
       tiendaExistente
     ) {
-
       const {
-        error: updateError
+        error: updateError,
       } =
         await supabase
           .from('tiendas')
           .update({
-
             productos_json:
-              productos
-
+              productos,
           })
           .eq(
             'user_id',
             userId
-          )
+          );
 
-      if (
-        updateError
-      ) {
-
+      if (updateError) {
         console.error(
           'VortexAI: error actualizando catálogo:',
           updateError
-        )
+        );
 
         return NextResponse.json(
           {
             error:
               'Error guardando el catálogo: ' +
-              updateError.message
+              updateError.message,
           },
           {
-            status: 500
+            status: 500,
           }
-        )
+        );
       }
-
     } else {
-
       const {
-        error: insertError
+        error: insertError,
       } =
         await supabase
           .from('tiendas')
           .insert([
-
             {
               user_id:
                 userId,
-
               nombre_tienda:
                 'Mi Tienda',
-
               productos_json:
-                productos
-            }
+                productos,
+            },
+          ]);
 
-          ])
-
-      if (
-        insertError
-      ) {
-
+      if (insertError) {
         console.error(
           'VortexAI: error creando tienda:',
           insertError
-        )
+        );
 
         return NextResponse.json(
           {
             error:
               'Error creando la tienda: ' +
-              insertError.message
+              insertError.message,
           },
           {
-            status: 500
+            status: 500,
           }
-        )
+        );
       }
-    }
-
-    // ========================================================
-    // MENSAJE FINAL
-    // ========================================================
-
-    const limiteShopify =
-      Boolean(
-        shopifyResultado?.limiteAlcanzado
-      )
-
-    let message =
-      `Catálogo importado correctamente. Se han encontrado ${productos.length} productos.`
-
-    if (
-      shopifyResultado &&
-      shopifyResultado.paginas > 1
-    ) {
-
-      message +=
-        ` Se han procesado ${shopifyResultado.paginas} páginas del catálogo Shopify.`
-    }
-
-    if (
-      limiteShopify
-    ) {
-
-      message +=
-        ` Se ha alcanzado el límite máximo de ${MAX_SHOPIFY_PRODUCTS.toLocaleString('es-ES')} productos por importación.`
-    }
-
-    if (
-      urlsProductos.length >
-      0 &&
-      shopifyResultado?.productos.length === 0
-    ) {
-
-      message +=
-        ` Se han utilizado los sitemaps de la tienda para descubrir el catálogo.`
     }
 
     // ========================================================
@@ -2170,62 +1368,37 @@ export async function POST(
 
     return NextResponse.json(
       {
-
-        success:
-          true,
-
+        success: true,
         total_productos:
           productos.length,
-
         productos,
-
-        message,
-
-        fuente:
-          shopifyResultado?.endpointUsado
-            ? 'shopify'
-            : urlsProductos.length > 0
-              ? 'sitemap'
-              : 'web',
-
-        paginas_shopify:
-          shopifyResultado?.paginas ||
-          0,
-
-        limite_importacion_alcanzado:
-          limiteShopify,
-
-        urls_sitemap_encontradas:
-          urlsProductos.length
+        message:
+          `Productos extraídos y guardados correctamente. Total: ${productos.length}.`,
       },
       {
-        status: 200
+        status: 200,
       }
-    )
-
-  } catch (
-    error: unknown
-  ) {
-
+    );
+  } catch (error: unknown) {
     console.error(
       'VortexAI: error importando URL:',
       error
-    )
+    );
 
     const mensaje =
       error instanceof Error
         ? error.message
-        : 'Error desconocido'
+        : 'Error desconocido';
 
     return NextResponse.json(
       {
         error:
           'Error procesando la URL: ' +
-          mensaje
+          mensaje,
       },
       {
-        status: 500
+        status: 500,
       }
-    )
+    );
   }
 }
