@@ -77,8 +77,6 @@ const [visitorId, setVisitorId] = useState<string | null>(null)
   const finRef = useRef<HTMLDivElement>(null)
 
   const carritoComprobado = useRef(false)
-  const estadoRestaurado = useRef(false)
-  const [estadoHidratado, setEstadoHidratado] = useState(false)
 
   // ============================================================
   // OBTENER ID REAL DE LA TIENDA
@@ -213,18 +211,15 @@ const [visitorId, setVisitorId] = useState<string | null>(null)
         // MENSAJE DE BIENVENIDA
         // ======================================================
 
-        if (data.mensaje_bienvenida && !estadoRestaurado.current) {
+        if (data.mensaje_bienvenida) {
 
-          setMensajes((prev) => {
-            if (prev.length > 1) return prev
-            if (prev.length === 1 && prev[0]?.texto === data.mensaje_bienvenida) return prev
-            return [
-              {
-                rol: 'bot',
-                texto: data.mensaje_bienvenida,
-              },
-            ]
-          })
+          setMensajes([
+            {
+              rol: 'bot',
+              texto:
+                data.mensaje_bienvenida,
+            },
+          ])
 
         }
 
@@ -240,62 +235,6 @@ const [visitorId, setVisitorId] = useState<string | null>(null)
     }
 
   }, [idActual])
-
-  // ============================================================
-  // RESTAURAR EL ESTADO DEL CHAT
-  // ============================================================
-  useEffect(() => {
-    if (typeof window === 'undefined' || !idActual || estadoRestaurado.current) return
-
-    try {
-      const key = `vortexai_chat_state_${String(idActual)}`
-      const raw = window.sessionStorage.getItem(key)
-
-      if (raw) {
-        const estado = JSON.parse(raw)
-
-        if (Array.isArray(estado.mensajes) && estado.mensajes.length > 0) {
-          setMensajes(estado.mensajes)
-        }
-
-        if (typeof estado.input === 'string') setInput(estado.input)
-        if (typeof estado.fallbackIntentos === 'number') setFallbackIntentos(estado.fallbackIntentos)
-        if (estado.handover && typeof estado.handover === 'object') setHandover(estado.handover)
-        if (estado.formHandover && typeof estado.formHandover === 'object') setFormHandover({
-          nombre: String(estado.formHandover.nombre || ''),
-          email: String(estado.formHandover.email || ''),
-          mensaje: String(estado.formHandover.mensaje || ''),
-        })
-        if (estado.handoverEnviado === true) setHandoverEnviado(true)
-      }
-    } catch (error) {
-      console.error('VortexAI: no se pudo restaurar el estado del chat:', error)
-    } finally {
-      estadoRestaurado.current = true
-      setEstadoHidratado(true)
-    }
-  }, [idActual])
-
-  // Guardar el estado para que un remount o recarga accidental no borre el formulario.
-  useEffect(() => {
-    if (typeof window === 'undefined' || !idActual || !estadoHidratado) return
-
-    try {
-      window.sessionStorage.setItem(
-        `vortexai_chat_state_${String(idActual)}`,
-        JSON.stringify({
-          mensajes,
-          input,
-          fallbackIntentos,
-          handover,
-          formHandover,
-          handoverEnviado,
-        })
-      )
-    } catch (error) {
-      console.error('VortexAI: no se pudo guardar el estado del chat:', error)
-    }
-  }, [idActual, estadoHidratado, mensajes, input, fallbackIntentos, handover, formHandover, handoverEnviado])
 
   // ============================================================
   // INICIALIZAR CONFIGURACIÓN
@@ -631,32 +570,16 @@ useEffect(() => {
       )
 
       if (data.handover === true) {
-        const accion =
-          data.handoverAction ||
-          'formulario'
-
-        const whatsappUrl =
-          data.whatsappUrl || null
-
-        const emailUrl =
-          data.emailUrl || null
-
-        // En producción, WhatsApp y Email redirigen directamente.
-        // En Preview mantenemos el botón para no sacar al usuario del dashboard.
-        if (!modoPreview && accion === 'whatsapp' && whatsappUrl) {
-          window.location.href = whatsappUrl
-          return
-        }
-
-        if (!modoPreview && accion === 'email' && emailUrl) {
-          window.location.href = emailUrl
-          return
-        }
-
         setHandover({
-          action: accion,
-          whatsappUrl,
-          emailUrl
+          action:
+            data.handoverAction ||
+            'formulario',
+          whatsappUrl:
+            data.whatsappUrl ||
+            null,
+          emailUrl:
+            data.emailUrl ||
+            null
         })
       } else {
         setHandover(null)
@@ -1024,11 +947,9 @@ useEffect(() => {
 
               {handover.action === 'formulario' && (
                 <form
-                  onSubmit={(e) => {
-                    e.preventDefault()
-                    e.stopPropagation()
-                    void enviarFormularioHandover(e)
-                  }}
+                  onSubmit={
+                    enviarFormularioHandover
+                  }
                   className="space-y-2"
                 >
                   <p className="text-xs font-medium text-gray-800">
@@ -1051,7 +972,7 @@ useEffect(() => {
                       )
                     }
                     placeholder="Tu nombre"
-                    className="w-full border border-gray-300 rounded-xl px-3 py-2 text-xs focus:outline-none"
+                    className="w-full border border-gray-300 rounded-xl px-3 py-2 text-xs text-black placeholder:text-gray-400 focus:outline-none"
                   />
 
                   <input
@@ -1070,7 +991,7 @@ useEffect(() => {
                       )
                     }
                     placeholder="Tu email"
-                    className="w-full border border-gray-300 rounded-xl px-3 py-2 text-xs focus:outline-none"
+                    className="w-full border border-gray-300 rounded-xl px-3 py-2 text-xs text-black placeholder:text-gray-400 focus:outline-none"
                   />
 
                   <textarea
@@ -1089,7 +1010,7 @@ useEffect(() => {
                       )
                     }
                     placeholder="¿En qué podemos ayudarte?"
-                    className="w-full border border-gray-300 rounded-xl px-3 py-2 text-xs focus:outline-none resize-none"
+                    className="w-full border border-gray-300 rounded-xl px-3 py-2 text-xs text-black placeholder:text-gray-400 focus:outline-none resize-none"
                   />
 
                   <button
@@ -1114,11 +1035,7 @@ useEffect(() => {
           )}
 
           <form
-            onSubmit={(e) => {
-              e.preventDefault()
-              e.stopPropagation()
-              void enviarMensaje(e)
-            }}
+            onSubmit={enviarMensaje}
             className="bg-white border-t border-gray-200 p-2.5 flex gap-2"
           >
 
@@ -1131,7 +1048,7 @@ useEffect(() => {
                 )
               }
               placeholder="Escribe tu mensaje..."
-              className="flex-1 border border-gray-300 rounded-xl px-3 py-2 text-sm text-black focus:outline-none"
+              className="flex-1 border border-gray-300 rounded-xl px-3 py-2 text-sm focus:outline-none"
               style={{
                 borderColor:
                   colorPrimario
@@ -1164,7 +1081,11 @@ useEffect(() => {
       <button
         onClick={() => {
 
-          setAbierto((prev) => !prev)
+          setAbierto(!abierto)
+
+          if (!abierto) {
+            cargarConfiguracion()
+          }
 
         }}
         className="text-white w-14 h-14 rounded-full shadow-2xl flex items-center justify-center hover:scale-105 transition-all duration-300 cursor-pointer overflow-hidden border-2 border-white/20"
