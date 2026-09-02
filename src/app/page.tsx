@@ -343,7 +343,7 @@ export default function LandingPage() {
         </div>
         <div className="faq-list">
           {faqs.map(([q, a], index) => (
-            <div className={`faq-item ${openFaq === index ? 'faq-open' : ''} reveal`} ref={reveal} key={q}>
+            <div className={`faq-item ${openFaq === index ? 'faq-open' : ''}`} key={q}>
               <button onClick={() => setOpenFaq(openFaq === index ? null : index)}>
                 <span>{q}</span><ChevronDown size={18} />
               </button>
