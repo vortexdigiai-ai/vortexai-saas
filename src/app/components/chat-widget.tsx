@@ -684,6 +684,17 @@ useEffect(() => {
 
         handoverRef.current = nuevoHandover
         setHandover(nuevoHandover)
+
+        // En producción, WhatsApp y email son canales directos.
+        // En el preview mantenemos el panel para poder probarlo sin
+        // sacar al usuario del dashboard.
+        if (!modoPreview) {
+          if (nuevoHandover.action === 'whatsapp' && nuevoHandover.whatsappUrl) {
+            window.location.href = nuevoHandover.whatsappUrl
+          } else if (nuevoHandover.action === 'email' && nuevoHandover.emailUrl) {
+            window.location.href = nuevoHandover.emailUrl
+          }
+        }
       } else if (!handoverRef.current) {
         setHandover(null)
       }

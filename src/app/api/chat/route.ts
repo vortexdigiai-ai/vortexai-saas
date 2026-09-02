@@ -103,8 +103,7 @@ if ((!mensaje && !inicioWidget) || !tiendaId) {
   modo_persuasivo,
   carrito_abandonado,
   analisis_sentimiento,
-  cupones_flash,
-  plan
+  cupones_flash
 `)
       .eq('user_id', tiendaId)
       .single()
@@ -617,11 +616,13 @@ Nunca inventes información que no aparezca en los datos proporcionados.
         ? fallbackIntentosCliente + 1
         : 0
 
+    // Si la IA confirma que no encuentra la información, derivamos
+    // inmediatamente al canal configurado. Así el cliente no se queda
+    // viendo únicamente el texto de fallback.
     const debeDerivar =
       !inicioWidget &&
       (
-        intentosFallback >=
-          umbralFrustracion ||
+        respuestaNoEncontrada ||
         (
           tienda.analisis_sentimiento === true &&
           contieneFrustracion
@@ -658,12 +659,21 @@ Nunca inventes información que no aparezca en los datos proporcionados.
         accionFallback ===
         'whatsapp'
       ) {
-        const numero = String(tienda.whatsapp_soporte || '').replace(/\D/g, '')
 
-        // WhatsApp necesita un número internacional válido.
-        if (numero.length >= 9) {
-          const textoWhatsApp = `Hola, necesito ayuda con mi consulta en ${tienda.nombre_tienda || 'la tienda'}.`
-          whatsappUrl = `https://wa.me/${numero}?text=${encodeURIComponent(textoWhatsApp)}`
+        const numero =
+          String(
+            tienda.whatsapp_soporte ||
+            ''
+          ).replace(
+            /[^0-9]/g,
+            ''
+          )
+
+        if (numero) {
+          whatsappUrl =
+            `https://wa.me/${numero}?text=${encodeURIComponent(
+              'Hola, necesito ayuda con mi consulta.'
+            )}`
         }
       }
 
@@ -678,12 +688,12 @@ Nunca inventes información que no aparezca en los datos proporcionados.
             ''
           ).trim()
 
-        if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        if (email) {
           emailUrl =
             `mailto:${email}?subject=${encodeURIComponent(
-              `Ayuda desde ${tienda.nombre_tienda || 'la tienda'}`
+              'Solicitud de ayuda desde la tienda'
             )}&body=${encodeURIComponent(
-              `Hola, necesito ayuda con mi consulta en ${tienda.nombre_tienda || 'la tienda'}.`
+              'Hola, necesito ayuda con mi consulta.'
             )}`
         }
       }
