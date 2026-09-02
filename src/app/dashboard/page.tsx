@@ -1,2392 +1,565 @@
 'use client'
-import { useState, useEffect } from 'react'
-import CatalogoForm from './catalogo-form'
-import ChatWidget from '@/app/components/chat-widget'
-import { supabase } from '@/lib/supabase'
+
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import type { ReactNode } from 'react'
 import {
-Sparkles,
-Bot,
-ToggleLeft,
-ToggleRight,
-Code,
-LogOut,
-LayoutDashboard,
-Database,
-Sliders,
-Settings,
-GitFork,
-BarChart3,
-FileText,
-MessageSquare,
-Lock,
-Crown,
-Palette
+  Activity,
+  ArrowUpRight,
+  BarChart3,
+  Bot,
+  Boxes,
+  Check,
+  ChevronDown,
+  Clipboard,
+  Code2,
+  Copy,
+  Database,
+  ExternalLink,
+  FileText,
+  GitFork,
+  Globe2,
+  LayoutDashboard,
+  LifeBuoy,
+  Lock,
+  LogOut,
+  Menu,
+  MessageSquare,
+  Palette,
+  RefreshCw,
+  Search,
+  Settings,
+  ShieldCheck,
+  Sparkles,
+  ToggleLeft,
+  ToggleRight,
+  TrendingUp,
+  Upload,
+  Users,
+  X,
+  Zap,
 } from 'lucide-react'
+import { supabase } from '@/lib/supabase'
+import ChatWidget from '@/app/components/chat-widget'
+
+type Tab = 'overview' | 'catalogo' | 'ia' | 'personalizacion' | 'flujos' | 'analiticas' | 'conversaciones' | 'widget' | 'planes' | 'ajustes'
+type Plan = 'free' | 'starter' | 'growth' | 'pro' | 'custom'
+type Metric = { totalChats: number; mensajes: number; visitantes: number; resueltas: number; noResueltas: number; tasaResolucion: number }
+
+const PLAN_LEVEL: Record<Plan, number> = { free: 0, starter: 1, growth: 2, pro: 3, custom: 4 }
+
+const NAV: { id: Tab; label: string; icon: typeof LayoutDashboard; section: string }[] = [
+  { id: 'overview', label: 'Overview', icon: LayoutDashboard, section: 'Workspace' },
+  { id: 'catalogo', label: 'Catálogo & conocimiento', icon: Database, section: 'Workspace' },
+  { id: 'ia', label: 'Funciones IA', icon: Sparkles, section: 'Workspace' },
+  { id: 'personalizacion', label: 'Personalización', icon: Palette, section: 'Workspace' },
+  { id: 'flujos', label: 'Flujos híbridos', icon: GitFork, section: 'Workspace' },
+  { id: 'analiticas', label: 'Analíticas', icon: BarChart3, section: 'Intelligence' },
+  { id: 'conversaciones', label: 'Conversaciones', icon: MessageSquare, section: 'Intelligence' },
+  { id: 'widget', label: 'Widget & instalación', icon: Code2, section: 'Deployment' },
+  { id: 'planes', label: 'Planes', icon: TrendingUp, section: 'Account' },
+  { id: 'ajustes', label: 'Ajustes', icon: Settings, section: 'Account' },
+]
+
+const features = [
+  { key: 'detector_idioma', title: 'Detector de idioma', description: 'Detecta el idioma de la conversación y adapta la respuesta.', min: 'free' as Plan },
+  { key: 'exit_intent', title: 'Exit Intent', description: 'Activa el asistente cuando el visitante muestra intención de abandonar.', min: 'starter' as Plan },
+  { key: 'cross_selling', title: 'Cross-selling', description: 'Sugiere productos relacionados cuando existe una oportunidad clara.', min: 'starter' as Plan },
+  { key: 'modo_persuasivo', title: 'Modo persuasivo', description: 'Aumenta el enfoque comercial sin perder las reglas de conocimiento.', min: 'growth' as Plan },
+  { key: 'carrito_abandonado', title: 'Carritos abandonados', description: 'Detecta carritos inactivos y puede activar el contexto de recuperación.', min: 'growth' as Plan },
+  { key: 'analisis_sentimiento', title: 'Análisis de sentimiento', description: 'Ayuda a detectar frustración y priorizar el handover.', min: 'growth' as Plan },
+  { key: 'cupones_flash', title: 'Cupones flash', description: 'Permite utilizar el flujo de cupones cuando esté configurado.', min: 'pro' as Plan },
+]
+
+const emptyMetric: Metric = { totalChats: 0, mensajes: 0, visitantes: 0, resueltas: 0, noResueltas: 0, tasaResolucion: 0 }
+
+function formatNumber(n: number) { return n.toLocaleString('es-ES') }
+function rangeStart(range: string) {
+  const d = new Date()
+  if (range === '24h') d.setHours(d.getHours() - 24)
+  else d.setDate(d.getDate() - (range === '30d' ? 30 : 7))
+  return d
+}
+function classify(text: string) {
+  const t = text.toLowerCase()
+  if (/env[ií]o|entrega|llega|plazo|transporte/.test(t)) return 'Envíos'
+  if (/devol|cambio|reembolso|garant[ií]a/.test(t)) return 'Devoluciones'
+  if (/precio|coste|€|descuento|cup[oó]n|oferta/.test(t)) return 'Precios'
+  if (/producto|talla|color|stock|disponib|caracter[ií]st/.test(t)) return 'Productos'
+  return 'Generales'
+}
 
 export default function DashboardPage() {
-// Estados para la personalización avanzada del widget 
-const [avatarUrlCustom, setAvatarUrlCustom] = useState('');
-const [posicionWidget, setPosicionWidget] = useState('derecha');
-const [nombreAsistente, setNombreAsistente] = useState('Asistente Virtual IA');
-const [modalCustomAbierto, setModalCustomAbierto] = useState(false);
-const [formNombre, setFormNombre] = useState('');
-const [formEmail, setFormEmail] = useState('');
-const [formMensaje, setFormMensaje] = useState('');
-const [enviandoForm, setEnviandoForm] = useState(false);
+  const [userId, setUserId] = useState('')
+  const [tab, setTab] = useState<Tab>('overview')
+  const [mobileNav, setMobileNav] = useState(false)
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [notice, setNotice] = useState('')
+  const [range, setRange] = useState('7d')
+  const [metrics, setMetrics] = useState<Metric>(emptyMetric)
+  const [previousMetrics, setPreviousMetrics] = useState<Metric>(emptyMetric)
+  const [topics, setTopics] = useState<{ name: string; count: number }[]>([])
+  const [logs, setLogs] = useState<any[]>([])
+  const [logSearch, setLogSearch] = useState('')
+  const [logLoading, setLogLoading] = useState(false)
+  const [config, setConfig] = useState<any>({})
+  const [catalogCount, setCatalogCount] = useState(0)
+  const [csv, setCsv] = useState<File | null>(null)
+  const [csvLoading, setCsvLoading] = useState(false)
+  const [url, setUrl] = useState('')
+  const [urlLoading, setUrlLoading] = useState(false)
+  const [widgetCopied, setWidgetCopied] = useState(false)
+  const [customOpen, setCustomOpen] = useState(false)
+  const [custom, setCustom] = useState({ name: '', email: '', message: '' })
 
-// Añadidas las pestañas "flujos-hibridos" y "analiticas" para corregir el error de tipado
-const [activeTab, setActiveTab] = useState<'overview' | 'catalogo' |
-'ia' | 'personalizacion' | 'widget' | 'logs' | 'settings' |
-'planes' | 'flujos-hibridos' | 'analiticas'>('overview')
+  const currentPlan = (String(config.plan || 'free').toLowerCase() as Plan)
+  const planLevel = PLAN_LEVEL[currentPlan] ?? 0
 
-const [copiado, setCopiado] = useState(false);
+  const updateConfig = (key: string, value: any) => setConfig((prev: any) => ({ ...prev, [key]: value }))
 
-// Estados de configuración e IA
-const [exitIntent, setExitIntent] = useState(false)
-const [recomendador, setRecomendador] = useState(true)
-const [modoPersuasivo, setModoPersuasivo] = useState(false)
-const [detectorIdioma, setDetectorIdioma] = useState(true)
-const [carritoAbandonado, setCarritoAbandonado] = useState(false)
-const [analisisSentimiento, setAnalisisSentimiento] = useState(false)
-const [cuponesFlash, setCuponesFlash] = useState(false)
-
-// Estado del Plan del cliente ('free', 'starter', 'growth', 'pro', 'custom')
-const [planCliente, setPlanCliente] = useState('free')
-
-// Estados de Personalización (Colores y Estilos)
-const [colorPrimario, setColorPrimario] = useState('#f43f5e')
-const [mensajeBienvenida, setMensajeBienvenida] = useState('¡Hola! 👋 Soy el asistente virtual de tu tienda. Pregúntame sobre envíos o productos.')
-const [avatarEstilo, setAvatarEstilo] = useState('moderno')
-
-// Estados para políticas y envíos
-const [tiemposEnvio, setTiemposEnvio] = useState('')
-const [politicas, setPoliticas] = useState('')
-const [faqs, setFaqs] = useState('')
-const [archivoCSV, setArchivoCSV] = useState<File | null>(null);
-const [subiendoCSV, setSubiendoCSV] = useState(false);
-const [mensajeCSV, setMensajeCSV] = useState('');
-// Estados del chat de prueba del Overview
-const [inputChat, setInputChat] = useState('');
-const [chatMensajes, setChatMensajes] = useState<
-  { remitente: 'user' | 'ai'; texto: string }[]
->([]);
-const [isTyping, setIsTyping] = useState(false);
-const [urlTienda, setUrlTienda] = useState('');
-const [extrayendoWeb, setExtrayendoWeb] = useState(false);
-const [mensajeWeb, setMensajeWeb] = useState('');
-
-const subirCSV = async () => {
-  if (!archivoCSV) {
-    setMensajeCSV('Selecciona primero un archivo CSV.');
-    return;
-  }
-
-  setSubiendoCSV(true);
-  setMensajeCSV('');
-
-  try {
-    const formData = new FormData();
-
-    formData.append('archivo_csv', archivoCSV);
-
-    // IMPORTANTE:
-    // Aquí utilizamos el ID de la tienda que ya utiliza tu dashboard.
-    formData.append('user_id', String(userId));
-
-    const response = await fetch('/api/upload-csv', {
-      method: 'POST',
-      body: formData,
-    });
-
-    const data = await response.json();
-
-    if (!response.ok) {
-      setMensajeCSV(
-        data.error || 'No se pudo procesar el archivo CSV.'
-      );
-      return;
-    }
-
-    setMensajeCSV(
-      `¡Éxito! Se han procesado ${data.total_productos || 0} productos.`
-    );
-
-  } catch (error) {
-    console.error('VortexAI: error subiendo CSV:', error);
-
-    setMensajeCSV(
-      'Error de conexión con el servidor.'
-    );
-
-  } finally {
-    setSubiendoCSV(false);
-  }
-};
-
-const extraerWeb = async () => {
-  if (!urlTienda.trim()) {
-    setMensajeWeb('Introduce primero la URL de tu tienda.');
-    return;
-  }
-
-  setExtrayendoWeb(true);
-  setMensajeWeb('');
-
-  try {
-    let url = urlTienda.trim();
-
-    if (!url.startsWith('http://') && !url.startsWith('https://')) {
-      url = `https://${url}`;
-    }
-
-    const response = await fetch('/api/import-url', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        url,
-        user_id: String(userId),
-      }),
-    });
-
-    const data = await response.json();
-
-    if (!response.ok) {
-      setMensajeWeb(
-        data.error || 'No se pudieron extraer los productos.'
-      );
-      return;
-    }
-
-    setMensajeWeb(
-      `¡Éxito! Se han extraído ${data.total_productos || 0} productos.`
-    );
-
-  } catch (error) {
-    console.error(
-      'VortexAI: error extrayendo tienda:',
-      error
-    );
-
-    setMensajeWeb(
-      'Error de conexión con el servidor.'
-    );
-
-  } finally {
-    setExtrayendoWeb(false);
-  }
-};
-
-// Estados para Flujos Híbridos y Reglas de Escape
-const [accionFallback, setAccionFallback] = useState('formulario'); // 'formulario' | 'whatsapp' | 'email'
-const [whatsappSoporte, setWhatsappSoporte] = useState('');
-const [umbralFrustracion, setUmbralFrustracion] = useState('2'); // Intentos antes de derivar
-const [mensajeFallback, setMensajeFallback] = useState('Vaya, parece que no tengo esa información exacta. Déjanos tus datos y un especialista humano te contactará de inmediato.');
-
-// Estado para las interacciones reales en tiempo real
-const [chatsHoy, setChatsHoy] = useState(0)
-const [guardandoConfig, setGuardandoConfig] = useState(false)
-const [userId, setUserId] = useState<string>('')
-const [cargandoDatos, setCargandoDatos] = useState(true)
-
-// Estados de Logs que faltaban por declarar (para solucionar el error de TypeScript)
-const [cargandoLogs, setCargandoLogs] = useState(false)
-const [logsConversaciones, setLogsConversaciones] = useState<any[]>([])
-
-useEffect(() => {
-  async function obtenerUsuario() {
-    const { data: { user } } = await supabase.auth.getUser()
-    if (user) {
-      setUserId(user.id)
-    }
-  }
-  obtenerUsuario()
-}, [])
-
-// Función para manejar el envío de mensajes del chat de prueba y guardarlos en la tabla real
-const manejarEnvioChat = async (e?: React.FormEvent) => {
-if (e) e.preventDefault();
-if (!inputChat.trim()) return;
-const mensajeUsuario = inputChat;
-setChatMensajes(prev => [...prev, { remitente: 'user', texto:
-mensajeUsuario }]);
-setInputChat('');
-setIsTyping(true);
-setTimeout(async () => {
-let respuestaIA = "He consultado la base de conocimiento actual de tu tienda y las políticas configuradas para darte esta respuesta.";
-const textoLower = mensajeUsuario.toLowerCase();
-if (textoLower.includes('envío') || textoLower.includes('tardan') ||
-textoLower.includes('llegar')) {
-respuestaIA = "📦 Con respecto a los envíos: Se procesan y entregan según las directrices activas en tu panel de Políticas y Envíos.";
-} else if (textoLower.includes('pago') ||
-textoLower.includes('tarjeta') || textoLower.includes('cobro')) {
-respuestaIA = "💳 Tu tienda acepta los métodos de pago configurados en tu plataforma de comercio electrónico de forma segura.";
-} else if (textoLower.includes('devolución') ||
-textoLower.includes('cambio')) {
-respuestaIA = "🔄 Las condiciones de devolución están regidas por los plazos establecidos en tu sección de Políticas de tu dashboard.";
-}
-setChatMensajes(prev => [...prev, { remitente: 'ai', texto:
-respuestaIA }]);
-setIsTyping(false);
-// Guardar la interacción real en la tabla de Supabase para que aumente el contador del dashboard
-try {
-await supabase.from('interacciones_chat').insert([
-{ user_id: userId, remitente: 'user', texto: mensajeUsuario },
-{ user_id: userId, remitente: 'ai', texto: respuestaIA }
-]);
-} catch (err) {
-console.error('Error al guardar interacción en Supabase:', err);
-}
-}, 800);
-};
-
-// Cargar datos de la tienda y métricas en tiempo real desde Supabase al iniciar
-useEffect(() => {
-async function cargarDatosYMetricas() {
-try {
-// 1. Cargar datos de configuración de la tienda
-const { data, error } = await supabase
-.from('tiendas')
-.select('*')
-.eq('user_id', userId)
-.maybeSingle()
-if (data) {
-setTiemposEnvio(data.tiempos_envio || '')
-setPoliticas(data.politicas || '')
-setFaqs(data.faqs || '')
-setExitIntent(data.exit_intent || false)
-setRecomendador(data.recomendador ?? true)
-setModoPersuasivo(data.modo_persuasivo || false)
-setDetectorIdioma(data.detector_idioma ?? true)
-setCarritoAbandonado(data.carrito_abandonado || false)
-setAnalisisSentimiento(data.analisis_sentimiento || false)
-setCuponesFlash(data.cupones_flash || false)
-setPlanCliente(data.plan || 'free')
-setColorPrimario(data.color_primario || '#f43f5e')
-setMensajeBienvenida(data.mensaje_bienvenida || '¡Hola! 👋 Soy el asistente virtual de tu tienda.')
-setAvatarEstilo(data.avatar_url || 'moderno')
-}
-// 2. Contar interacciones de HOY desde la nueva tabla interacciones_chat
-const hoyInicio = new Date();
-hoyInicio.setHours(0, 0, 0, 0);
-const { count, error: errorCount } = await supabase
-.from('interacciones_chat')
-.select('*', { count: 'exact', head: true })
-.eq('user_id', userId)
-.gte('created_at', hoyInicio.toISOString());
-if (!errorCount && count !== null) {
-setChatsHoy(count);
-}
-} catch (err) {
-console.log('Error al cargar datos y métricas:', err);
-} finally {
-setCargandoDatos(false);
-}
-}
-if (userId) {
-cargarDatosYMetricas();
-}
-
-// 3. Suscripción en tiempo real (Realtime) para el contador de chats
-const channel = supabase
-.channel('cambios-interacciones')
-.on(
-'postgres_changes',
-{
-event: 'INSERT',
-schema: 'public',
-table: 'interacciones_chat',
-filter: `user_id=eq.${userId}`,
-},
-() => {
-setChatsHoy((prev) => prev + 1);
-}
-)
-.subscribe();
-return () => {
-supabase.removeChannel(channel);
-};
-}, [userId]);
-
-// Guardar configuración completa en la tabla 'tiendas'
-const guardarConfiguracion = async () => {
-  setGuardandoConfig(true);
-
-  try {
-    let avatarFinal = 'default';
-
-    if (avatarEstilo === 'custom') {
-      avatarFinal = avatarUrlCustom || 'default';
-    } else if (avatarEstilo === 'sparkle') {
-      avatarFinal = 'sparkle';
+  const loadStore = useCallback(async (id: string) => {
+    const { data } = await supabase.from('tiendas').select('*').eq('user_id', id).maybeSingle()
+    if (data) {
+      setConfig(data)
+      setCatalogCount(Array.isArray(data.productos_json) ? data.productos_json.length : 0)
     } else {
-      avatarFinal = 'moderno';
+      setConfig({ user_id: id, plan: 'free', detector_idioma: true, cross_selling: true, color_primario: '#ff5b6e', nombre_asistente: 'Asistente Virtual IA', posicion: 'derecha', avatar_url: 'moderno' })
     }
+  }, [])
 
-    const res = await fetch('/api/guardar-config', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        user_id: userId,
-
-        // PERSONALIZACIÓN
-        color_primario: colorPrimario,
-        mensaje_bienvenida: mensajeBienvenida,
-        nombre_asistente: nombreAsistente,
-        posicion: posicionWidget,
-        avatar_url: avatarFinal,
-
-        // POLÍTICAS Y BASE DE CONOCIMIENTO
-        tiempos_envio: tiemposEnvio,
-        politicas: politicas,
-        faqs: faqs,
-
-        // FUNCIONES IA
-        detector_idioma: detectorIdioma,
-        exit_intent: exitIntent,
-        cross_selling: recomendador,
-        modo_persuasivo: modoPersuasivo,
-        carrito_abandonado: carritoAbandonado,
-        analisis_sentimiento: analisisSentimiento,
-        cupones_flash: cuponesFlash,
-      }),
-    });
-
-    const data = await res.json();
-
-    if (!res.ok) {
-      throw new Error(data.error || 'Error al guardar');
+  const computeMetrics = useCallback(async (id: string, selectedRange: string, previous = false) => {
+    const currentStart = rangeStart(selectedRange)
+    const end = previous ? new Date(currentStart) : new Date()
+    const start = previous ? new Date(currentStart) : new Date(currentStart)
+    if (previous) {
+      const span = end.getTime() - start.getTime()
+      start.setTime(start.getTime() - span)
     }
-
-    if (typeof window !== 'undefined') {
-      window.dispatchEvent(
-        new Event('configuracionActualizada')
-      );
-    }
-
-    alert('¡Cambios guardados y aplicados correctamente!');
-
-  } catch (err: any) {
-    console.error('Error:', err);
-
-    alert(
-      'Hubo un error al guardar los cambios: ' +
-      err.message
-    );
-
-  } finally {
-    setGuardandoConfig(false);
-  }
-};
-// ============================================================
-// ANALÍTICAS REALES
-// ============================================================
-
-const [rangoFechas, setRangoFechas] = useState('7d')
-
-const [metricasReales, setMetricasReales] = useState({
-  totalChats: 0,
-  tasaResolucion: '0%',
-  mensajesProcesados: 0,
-  visitantesUnicos: 0,
-  consultasNoResueltas: 0,
-  conversacionesResueltas: 0,
-  variacionChats: null as number | null,
-  variacionMensajes: null as number | null,
-  variacionResolucion: null as number | null,
-})
-
-const [productosFrecuentes, setProductosFrecuentes] = useState([
-  {
-    nombre: 'Sin datos todavía',
-    consultas: '0 consultas',
-    porcentaje: '0%',
-  },
-])
-
-const [cargandoAnaliticas, setCargandoAnaliticas] = useState(true)
-
-const calcularVariacion = (
-  actual: number,
-  anterior: number
-): number | null => {
-  if (anterior === 0) {
-    return actual > 0 ? null : 0
-  }
-
-  return Math.round(
-    ((actual - anterior) / anterior) * 1000
-  ) / 10
-}
-
-const obtenerEtiquetaVariacion = (
-  variacion: number | null,
-  tipo: 'porcentaje' | 'puntos' = 'porcentaje'
-) => {
-  if (variacion === null) {
-    return 'Nuevo'
-  }
-
-  if (variacion === 0) {
-    return 'Sin cambios'
-  }
-
-  const signo = variacion > 0 ? '+' : ''
-
-  return tipo === 'puntos'
-    ? `${signo}${variacion.toFixed(1)} pp`
-    : `${signo}${variacion.toFixed(1)}%`
-}
-
-useEffect(() => {
-  let activo = true
-
-  async function obtenerAnaliticasAvanzadas() {
-    if (!userId) {
-      if (activo) {
-        setCargandoAnaliticas(false)
-      }
-      return
-    }
-
-    try {
-      setCargandoAnaliticas(true)
-
-      const ahora = new Date()
-
-      const duracionPeriodo =
-        rangoFechas === '24h'
-          ? 24 * 60 * 60 * 1000
-          : rangoFechas === '30d'
-            ? 30 * 24 * 60 * 60 * 1000
-            : 7 * 24 * 60 * 60 * 1000
-
-      const inicioPeriodoActual = new Date(
-        ahora.getTime() - duracionPeriodo
-      )
-
-      const inicioPeriodoAnterior = new Date(
-        inicioPeriodoActual.getTime() - duracionPeriodo
-      )
-
-      const { data, error } = await supabase
-        .from('interacciones_chat')
-        .select(
-          'id, created_at, conversation_id, visitor_id, remitente, texto, resuelta'
-        )
-        .eq('user_id', userId)
-        .gte(
-          'created_at',
-          inicioPeriodoAnterior.toISOString()
-        )
-        .order('created_at', {
-          ascending: false,
-        })
-        .limit(5000)
-
-      if (error) {
-        throw error
-      }
-
-      if (!activo) return
-
-      const filas = data || []
-
-      const filasActuales = filas.filter(
-        (item: any) =>
-          new Date(item.created_at).getTime() >=
-          inicioPeriodoActual.getTime()
-      )
-
-      const filasAnteriores = filas.filter(
-        (item: any) =>
-          new Date(item.created_at).getTime() >=
-          inicioPeriodoAnterior.getTime() &&
-          new Date(item.created_at).getTime() <
-          inicioPeriodoActual.getTime()
-      )
-
-      // ========================================================
-      // CONVERSACIONES ÚNICAS
-      // ========================================================
-
-      const obtenerConversaciones = (
-        registros: any[]
-      ) =>
-        new Set(
-          registros
-            .map((item: any) => item.conversation_id)
-            .filter(Boolean)
-            .map((id: any) => String(id))
-        )
-
-      const conversacionesActuales =
-        obtenerConversaciones(filasActuales)
-
-      const conversacionesAnteriores =
-        obtenerConversaciones(filasAnteriores)
-
-      const totalChats =
-        conversacionesActuales.size
-
-      const chatsAnteriores =
-        conversacionesAnteriores.size
-
-      // ========================================================
-      // RESOLUCIÓN REAL
-      // ========================================================
-
-      const obtenerResolucion = (
-        registros: any[]
-      ) => {
-        const ultimaResolucion =
-          new Map<string, boolean>()
-
-        registros
-          .filter(
-            (item: any) =>
-              item.conversation_id &&
-              item.remitente === 'ai' &&
-              typeof item.resuelta === 'boolean'
-          )
-          .sort(
-            (a: any, b: any) =>
-              new Date(b.created_at).getTime() -
-              new Date(a.created_at).getTime()
-          )
-          .forEach((item: any) => {
-            const id = String(
-              item.conversation_id
-            )
-
-            if (!ultimaResolucion.has(id)) {
-              ultimaResolucion.set(
-                id,
-                item.resuelta === true
-              )
-            }
-          })
-
-        const resueltas =
-          Array.from(
-            ultimaResolucion.values()
-          ).filter(Boolean).length
-
-        const conversacionesConEstado =
-          ultimaResolucion.size
-
-        return {
-          resueltas,
-          conversacionesConEstado,
-        }
-      }
-
-      const resolucionActual =
-        obtenerResolucion(filasActuales)
-
-      const resolucionAnterior =
-        obtenerResolucion(filasAnteriores)
-
-      const tasaResolucion =
-        totalChats > 0 &&
-        resolucionActual.conversacionesConEstado > 0
-          ? Math.round(
-              (
-                resolucionActual.resueltas /
-                totalChats
-              ) * 1000
-            ) / 10
-          : 0
-
-      const tasaResolucionAnterior =
-        chatsAnteriores > 0 &&
-        resolucionAnterior.conversacionesConEstado > 0
-          ? Math.round(
-              (
-                resolucionAnterior.resueltas /
-                chatsAnteriores
-              ) * 1000
-            ) / 10
-          : 0
-
-      const mensajesActuales =
-        filasActuales.length
-
-      const mensajesAnteriores =
-        filasAnteriores.length
-
-      const visitantesUnicos =
-        new Set(
-          filasActuales
-            .map((item: any) => item.visitor_id)
-            .filter(Boolean)
-            .map((id: any) => String(id))
-        ).size
-
-      const consultasNoResueltas =
-        Math.max(
-          totalChats -
-          resolucionActual.resueltas,
-          0
-        )
-
-      setMetricasReales({
-        totalChats,
-        tasaResolucion:
-          `${tasaResolucion.toFixed(1)}%`,
-        mensajesProcesados:
-          mensajesActuales,
-        visitantesUnicos,
-        consultasNoResueltas,
-        conversacionesResueltas:
-          resolucionActual.resueltas,
-        variacionChats:
-          calcularVariacion(
-            totalChats,
-            chatsAnteriores
-          ),
-        variacionMensajes:
-          calcularVariacion(
-            mensajesActuales,
-            mensajesAnteriores
-          ),
-        variacionResolucion:
-          Math.round(
-            (
-              tasaResolucion -
-              tasaResolucionAnterior
-            ) * 10
-          ) / 10,
-      })
-
-      // ========================================================
-      // TEMAS MÁS CONSULTADOS
-      // ========================================================
-
-      const conteoTemas: {
-        [key: string]: number
-      } = {
-        'Consultas de Productos': 0,
-        'Envíos y Plazos de Entrega': 0,
-        'Políticas de Devolución': 0,
-        'Precios y Descuentos': 0,
-      }
-
-      filasActuales
-        .filter(
-          (item: any) =>
-            item.remitente === 'user' ||
-            item.remitente === 'usuario' ||
-            item.remitente === 'cliente'
-        )
-        .forEach((item: any) => {
-          const txt = String(
-            item.texto || ''
-          )
-            .toLowerCase()
-            .normalize('NFD')
-            .replace(
-              /[\u0300-\u036f]/g,
-              ''
-            )
-
-          if (
-            txt.includes('envio') ||
-            txt.includes('tard') ||
-            txt.includes('llega') ||
-            txt.includes('entrega') ||
-            txt.includes('plazo')
-          ) {
-            conteoTemas[
-              'Envíos y Plazos de Entrega'
-            ]++
-          } else if (
-            txt.includes('devolv') ||
-            txt.includes('cambio') ||
-            txt.includes('reembolso')
-          ) {
-            conteoTemas[
-              'Políticas de Devolución'
-            ]++
-          } else if (
-            txt.includes('precio') ||
-            txt.includes('cupon') ||
-            txt.includes('descuento') ||
-            txt.includes('coste') ||
-            txt.includes('cuanto vale')
-          ) {
-            conteoTemas[
-              'Precios y Descuentos'
-            ]++
-          } else {
-            conteoTemas[
-              'Consultas de Productos'
-            ]++
-          }
-        })
-
-      const maxTema = Math.max(
-        ...Object.values(conteoTemas),
-        1
-      )
-
-      const listaProcesada =
-        Object.entries(conteoTemas)
-          .sort(([, a], [, b]) => b - a)
-          .map(([tema, cantidad]) => ({
-            nombre: tema,
-            consultas:
-              `${cantidad} ${cantidad === 1 ? 'consulta' : 'consultas'}`,
-            porcentaje:
-              `${Math.round(
-                (cantidad / maxTema) * 100
-              )}%`,
-          }))
-
-      setProductosFrecuentes(
-        listaProcesada
-      )
-    } catch (err) {
-      console.error(
-        'Error al cargar analíticas avanzadas:',
-        err
-      )
-
-      if (activo) {
-        setMetricasReales({
-          totalChats: 0,
-          tasaResolucion: '0%',
-          mensajesProcesados: 0,
-          visitantesUnicos: 0,
-          consultasNoResueltas: 0,
-          conversacionesResueltas: 0,
-          variacionChats: null,
-          variacionMensajes: null,
-          variacionResolucion: null,
-        })
-      }
-    } finally {
-      if (activo) {
-        setCargandoAnaliticas(false)
-      }
-    }
-  }
-
-  obtenerAnaliticasAvanzadas()
-
-  const subscription = supabase
-    .channel(
-      `cambios-analiticas-${userId}-${rangoFechas}`
-    )
-    .on(
-      'postgres_changes',
-      {
-        event: 'INSERT',
-        schema: 'public',
-        table: 'interacciones_chat',
-        filter: `user_id=eq.${userId}`,
-      },
-      () => {
-        obtenerAnaliticasAvanzadas()
-      }
-    )
-    .subscribe()
-
-  return () => {
-    activo = false
-    supabase.removeChannel(subscription)
-  }
-}, [userId, rangoFechas])
-
-const descargarCSVReal = async () => {
-  try {
     const { data, error } = await supabase
       .from('interacciones_chat')
-      .select(
-        'created_at, conversation_id, visitor_id, remitente, texto, resuelta'
-      )
-      .eq('user_id', userId)
-      .order('created_at', {
-        ascending: false,
-      })
+      .select('id, created_at, conversation_id, visitor_id, remitente, texto, resuelta')
+      .eq('user_id', id)
+      .gte('created_at', start.toISOString())
+      .lt('created_at', end.toISOString())
+      .order('created_at', { ascending: false })
       .limit(5000)
 
-    if (
-      error ||
-      !data ||
-      data.length === 0
-    ) {
-      alert(
-        'No hay suficientes datos registrados todavía para exportar.'
-      )
-      return
-    }
-
-    const escaparCSV = (
-      valor: unknown
-    ) =>
-      `"${String(valor ?? '')
-        .replace(/"/g, '""')}"`
-
-    let csvContent =
-      'data:text/csv;charset=utf-8,Fecha,Conversación,Visitante,Remitente,Resuelta,Mensaje\\n'
-
-    data.forEach((row: any) => {
-      const fechaLimpia =
-        new Date(
-          row.created_at
-        ).toLocaleString()
-
-      csvContent += [
-        escaparCSV(fechaLimpia),
-        escaparCSV(row.conversation_id),
-        escaparCSV(row.visitor_id),
-        escaparCSV(row.remitente),
-        escaparCSV(row.resuelta),
-        escaparCSV(row.texto),
-      ].join(',') + '\\n'
+    if (error || !data) return emptyMetric
+    const byConversation = new Map<string, any[]>()
+    data.forEach(row => {
+      if (!row.conversation_id) return
+      const key = String(row.conversation_id)
+      if (!byConversation.has(key)) byConversation.set(key, [])
+      byConversation.get(key)!.push(row)
     })
+    let resolved = 0
+    let unresolved = 0
+    byConversation.forEach(rows => {
+      const latest = [...rows].sort((a,b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0]
+      if (latest.resuelta === true) resolved++
+      else unresolved++
+    })
+    const visitors = new Set(data.map(x => x.visitor_id).filter(Boolean).map(String)).size
+    const totalChats = byConversation.size
+    return {
+      totalChats,
+      mensajes: data.length,
+      visitantes: visitors,
+      resueltas: resolved,
+      noResueltas: unresolved,
+      tasaResolucion: totalChats ? Math.round((resolved / totalChats) * 1000) / 10 : 0,
+    }
+  }, [])
 
-    const encodedUri = encodeURI(
-      csvContent
-    )
+  const loadAnalytics = useCallback(async (id: string, selectedRange: string) => {
+    setLoading(true)
+    const [now, prev] = await Promise.all([computeMetrics(id, selectedRange), computeMetrics(id, selectedRange, true)])
+    setMetrics(now); setPreviousMetrics(prev)
 
-    const link =
-      document.createElement('a')
+    const start = rangeStart(selectedRange)
+    const { data } = await supabase.from('interacciones_chat').select('texto').eq('user_id', id).gte('created_at', start.toISOString()).limit(5000)
+    const counts: Record<string, number> = {}
+    ;(data || []).forEach(row => { const topic = classify(row.texto || ''); counts[topic] = (counts[topic] || 0) + 1 })
+    setTopics(Object.entries(counts).sort((a,b) => b[1]-a[1]).map(([name,count]) => ({ name, count })))
+    setLoading(false)
+  }, [computeMetrics])
 
-    link.setAttribute(
-      'href',
-      encodedUri
-    )
+  useEffect(() => {
+    let active = true
+    ;(async () => {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user || !active) { setLoading(false); return }
+      setUserId(user.id)
+      await loadStore(user.id)
+      await loadAnalytics(user.id, range)
+    })()
+    return () => { active = false }
+  }, [loadStore, loadAnalytics, range])
 
-    link.setAttribute(
-      'download',
-      `vortexai_analiticas_${new Date()
-        .toISOString()
-        .slice(0, 10)}.csv`
-    )
+  useEffect(() => {
+    if (!userId) return
+    const channel = supabase.channel(`vortex-dashboard-${userId}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'interacciones_chat', filter: `user_id=eq.${userId}` }, () => loadAnalytics(userId, range))
+      .subscribe()
+    return () => { supabase.removeChannel(channel) }
+  }, [userId, range, loadAnalytics])
 
-    document.body.appendChild(link)
-    link.click()
-    document.body.removeChild(link)
-  } catch (e) {
-    console.error(
-      'Error al exportar CSV:',
-      e
-    )
+  const save = async () => {
+    setSaving(true); setNotice('')
+    try {
+      const payload = {
+        user_id: userId,
+        color_primario: config.color_primario || '#ff5b6e',
+        mensaje_bienvenida: config.mensaje_bienvenida || '¡Hola! 👋 ¿Cómo puedo ayudarte?',
+        nombre_asistente: config.nombre_asistente || 'Asistente Virtual IA',
+        posicion: config.posicion || 'derecha',
+        avatar_url: config.avatar_url || 'moderno',
+        tiempos_envio: config.tiempos_envio || '',
+        politicas: config.politicas || '',
+        faqs: config.faqs || '',
+        accion_fallback: config.accion_fallback || 'formulario',
+        whatsapp_soporte: config.whatsapp_soporte || '',
+        email_soporte: config.email_soporte || '',
+        umbral_frustracion: Number(config.umbral_frustracion || 2),
+        mensaje_fallback: config.mensaje_fallback || 'No tengo esa información exacta. Podemos derivarte a una persona.',
+        detector_idioma: config.detector_idioma !== false,
+        exit_intent: config.exit_intent === true,
+        cross_selling: config.cross_selling !== false,
+        modo_persuasivo: config.modo_persuasivo === true,
+        carrito_abandonado: config.carrito_abandonado === true,
+        analisis_sentimiento: config.analisis_sentimiento === true,
+        cupones_flash: config.cupones_flash === true,
+      }
+      const res = await fetch('/api/guardar-config', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'No se pudo guardar')
+      setConfig((prev: any) => ({ ...prev, ...payload }))
+      window.dispatchEvent(new Event('configuracionActualizada'))
+      setNotice('Cambios guardados y aplicados.')
+    } catch (e: any) {
+      setNotice(e.message || 'Error al guardar.')
+    } finally { setSaving(false) }
+  }
 
-    alert(
-      'Hubo un error al generar el archivo CSV.'
+  const uploadCsv = async () => {
+    if (!csv) return setNotice('Selecciona un CSV primero.')
+    setCsvLoading(true); setNotice('')
+    try {
+      const fd = new FormData()
+      fd.append('archivo_csv', csv); fd.append('user_id', userId)
+      const res = await fetch('/api/upload-csv', { method: 'POST', body: fd })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'No se pudo importar el CSV')
+      setCatalogCount(Number(data.total_productos || 0))
+      setNotice(`Catálogo actualizado: ${Number(data.total_productos || 0).toLocaleString('es-ES')} productos.`)
+      await loadStore(userId)
+    } catch (e: any) { setNotice(e.message || 'Error importando CSV.') }
+    finally { setCsvLoading(false) }
+  }
+
+  const importUrl = async () => {
+    if (!url.trim()) return setNotice('Introduce la URL de tu tienda.')
+    setUrlLoading(true); setNotice('')
+    try {
+      const normalized = /^https?:\/\//i.test(url.trim()) ? url.trim() : `https://${url.trim()}`
+      new URL(normalized)
+      const res = await fetch('/api/import-url', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ url: normalized, user_id: userId }) })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'No se pudo importar la tienda')
+      setCatalogCount(Number(data.total_productos || 0))
+      setNotice(`Importación completada: ${Number(data.total_productos || 0).toLocaleString('es-ES')} productos.`)
+      await loadStore(userId)
+    } catch (e: any) { setNotice(e.message || 'Error importando la tienda.') }
+    finally { setUrlLoading(false) }
+  }
+
+  const loadLogs = useCallback(async () => {
+    if (!userId) return
+    setLogLoading(true)
+    const { data } = await supabase.from('interacciones_chat').select('*').eq('user_id', userId).order('created_at', { ascending: false }).limit(500)
+    setLogs(data || []); setLogLoading(false)
+  }, [userId])
+
+  useEffect(() => { if (tab === 'conversaciones') loadLogs() }, [tab, loadLogs])
+
+  const filteredLogs = useMemo(() => logs.filter(row => {
+    const q = logSearch.toLowerCase().trim()
+    return !q || String(row.texto || '').toLowerCase().includes(q) || String(row.visitor_id || '').toLowerCase().includes(q)
+  }), [logs, logSearch])
+
+  const widgetCode = useMemo(() => {
+    if (!userId) return ''
+    const origin = typeof window !== 'undefined' ? window.location.origin : ''
+    return `<script src="${origin}/widget.js" data-tienda-id="${userId}" async></script>`
+  }, [userId])
+
+  const copyWidget = async () => {
+    if (!widgetCode) return
+    try { await navigator.clipboard.writeText(widgetCode); setWidgetCopied(true); setTimeout(() => setWidgetCopied(false), 2200) }
+    catch { setNotice('No se pudo copiar automáticamente. Selecciona el código manualmente.') }
+  }
+
+  const planLocked = (min: Plan) => planLevel < PLAN_LEVEL[min]
+  const changeTab = (next: Tab) => { setTab(next); setMobileNav(false); window.scrollTo({ top: 0, behavior: 'smooth' }) }
+
+  const metricDelta = (now: number, prev: number) => {
+    if (!prev) return now ? '+100%' : '—'
+    const delta = ((now - prev) / prev) * 100
+    return `${delta >= 0 ? '+' : ''}${delta.toFixed(1)}%`
+  }
+
+  const storeName = config.nombre_tienda || 'Mi tienda online'
+  const health = Math.min(100, Math.round(
+    (catalogCount > 0 ? 35 : 0) +
+    (config.tiempos_envio ? 15 : 0) +
+    (config.politicas ? 15 : 0) +
+    (config.faqs ? 10 : 0) +
+    (config.nombre_asistente ? 10 : 0) +
+    (config.mensaje_bienvenida ? 5 : 0) +
+    (config.plan && config.plan !== 'free' ? 10 : 0),
+  ))
+
+  const SectionTitle = ({ eyebrow, title, description }: { eyebrow: string; title: string; description?: string }) => (
+    <div className="vx-page-head">
+      <div><span className="vx-eyebrow">{eyebrow}</span><h1>{title}</h1>{description && <p>{description}</p>}</div>
+    </div>
+  )
+
+  const Card = ({ children, className = '' }: { children: ReactNode; className?: string }) => <section className={`vx-card ${className}`}>{children}</section>
+
+  const Toggle = ({ feature }: { feature: typeof features[number] }) => {
+    const locked = planLocked(feature.min)
+    const value = config[feature.key] === true
+    return (
+      <button
+        type="button"
+        disabled={locked}
+        onClick={() => updateConfig(feature.key, !value)}
+        className={`vx-toggle-row ${locked ? 'vx-locked' : ''}`}
+      >
+        <div className="vx-toggle-icon">{value ? <ToggleRight size={23} /> : <ToggleLeft size={23} />}</div>
+        <div className="vx-toggle-copy"><strong>{feature.title}</strong><span>{feature.description}</span></div>
+        <div className={`vx-switch ${value ? 'on' : ''}`}><span /></div>
+        {locked && <Lock size={14} className="vx-lock" />}
+      </button>
     )
   }
-}
 
-// Verificador de planes avanzados
-const esPlanGrowthSuperior = planCliente === 'growth' || planCliente ===
-'pro' || planCliente === 'custom'
-return (
-<div className="min-h-screen bg-[#0A0B0E] text-slate-100 flex font-sans selection:bg-rose-500/30 selection:text-rose-200">
-{/* ──────────────── BARRA LATERAL (SIDEBAR) ──────────────── */}
-<aside className="w-64 border-r border-white/[0.08] bg-[#0A0B0E] flex flex-col justify-between hidden md:flex sticky top-0 h-screen select-none">
-<div>
-<div className="h-20 px-6 border-b border-white/[0.08] flex items-center justify-between">
-<div className="flex items-center gap-2.5">
-<div className="w-7 h-7 rounded-lg bg-gradient-to-tr from-rose-500 to-orange-400 flex items-center justify-center shadow-md shadow-rose-500/20">
-<Sparkles size={14} className="text-white" />
-</div>
-<span className="font-display text-lg font-bold tracking-tight text-white">
-Vortex<span className="text-rose-500">AI</span>
-</span>
-</div>
-<span className={`text-[10px] font-mono px-2.5 py-0.5 uppercase tracking-wider rounded-full border ${planCliente === 'custom' ? 'bg-purple-500/15 text-purple-400 border-purple-500/30' : planCliente === 'pro' ? 'bg-rose-500/15 text-rose-400 border-rose-500/30' : planCliente === 'growth' ? 'bg-amber-500/15 text-amber-400 border-amber-500/30' : 'bg-slate-500/10 text-slate-400 border-slate-500/20'}`}>
-{planCliente}
-</span>
-</div>
-<div className="p-4 space-y-1 text-sm font-medium">
-<p className="px-3 pb-2 text-[11px] font-mono uppercase tracking-wider text-slate-500">General</p>
-<button onClick={() => setActiveTab('overview')}
-className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-colors ${activeTab === 'overview' ? 'bg-white/[0.08] text-white font-semibold' : 'text-slate-400 hover:text-white hover:bg-white/[0.04]'}`}>
-<LayoutDashboard size={18} className={activeTab ===
-'overview' ? 'text-rose-500' : 'text-slate-500'} /> Overview
-</button>
-<button onClick={() => setActiveTab('catalogo')}
-className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-colors ${activeTab === 'catalogo' ? 'bg-white/[0.08] text-white font-semibold' : 'text-slate-400 hover:text-white hover:bg-white/[0.04]'}`}>
-<Database size={18} className={activeTab === 'catalogo' ?
-'text-rose-500' : 'text-slate-500'} /> Catálogo & Políticas
-</button>
-<button onClick={() => setActiveTab('ia')} className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-colors ${activeTab === 'ia' ? 'bg-white/[0.08] text-white font-semibold' : 'text-slate-400 hover:text-white hover:bg-white/[0.04]'}`}>
-<Sliders size={18} className={activeTab === 'ia' ?
-'text-rose-500' : 'text-slate-500'} /> Funciones IA (Toggles)
-</button>
-<button onClick={() => setActiveTab('personalizacion')}
-className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-colors relative ${activeTab === 'personalizacion' ? 'bg-white/[0.08] text-white font-semibold' : 'text-slate-400 hover:text-white hover:bg-white/[0.04]'}`}>
-<Palette size={18} className={activeTab ===
-'personalizacion' ? 'text-rose-500' : 'text-slate-500'} />
-<span>Personalización Avanzada</span>
-{!esPlanGrowthSuperior && <Lock size={12} className="ml-auto text-amber-400" />}
-</button>
-<button 
-  onClick={() => setActiveTab('flujos-hibridos')}
-  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-colors cursor-pointer ${
-    activeTab === 'flujos-hibridos' 
-      ? 'bg-white/[0.08] text-white font-semibold' 
-      : 'text-slate-400 hover:text-white hover:bg-white/[0.04]'
-  }`}
->
-  <GitFork size={18} className={activeTab === 'flujos-hibridos' ? 'text-rose-500' : 'text-slate-500'} /> 
-  Flujos Híbridos
-</button>
-<button 
-  onClick={() => setActiveTab('analiticas')}
-  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-colors cursor-pointer ${
-    activeTab === 'analiticas' 
-      ? 'bg-white/[0.08] text-white font-semibold' 
-      : 'text-slate-400 hover:text-white hover:bg-white/[0.04]'
-  }`}
->
-  <BarChart3 size={18} className={activeTab === 'analiticas' ? 'text-rose-500' : 'text-slate-500'} /> 
-  Analíticas
-</button>
-<button onClick={() => setActiveTab('widget')}
-className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-colors ${activeTab === 'widget' ? 'bg-white/[0.08] text-white font-semibold' : 'text-slate-400 hover:text-white hover:bg-white/[0.04]'}`}>
-<Code size={18} className={activeTab === 'widget' ?
-'text-rose-500' : 'text-slate-500'} /> Widget e Instalación
-</button>
-<p className="px-3 pt-6 pb-2 text-[11px] font-mono uppercase tracking-wider text-slate-500">Inteligencia</p>
-<button onClick={() => setActiveTab('logs')}
-className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-colors ${activeTab === 'logs' ? 'bg-white/[0.08] text-white font-semibold' : 'text-slate-400 hover:text-white hover:bg-white/[0.04]'}`}>
-<MessageSquare size={18} className={activeTab === 'logs' ?
-'text-rose-500' : 'text-slate-500'} /> Conversaciones & Logs
-</button>
-</div>
-</div>
-<div className="p-4 border-t border-white/[0.08]">
-<button onClick={() => setActiveTab('settings')}
-className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-colors mb-2 ${activeTab === 'settings' ? 'bg-white/[0.08] text-white' : 'text-slate-400 hover:text-white hover:bg-white/[0.04]'}`}>
-<Settings size={18} className="text-slate-500" />
-Configuración
-</button>
-<a href="/login" className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-rose-400 hover:bg-rose-500/10 transition-colors">
-<LogOut size={18} /> Cerrar sesión
-</a>
-</div>
-</aside>
-{/* ──────────────── CONTENIDO PRINCIPAL ──────────────── */}
-<div className="flex-1 flex flex-col min-h-screen">
-<header className="h-20 border-b border-white/[0.08] bg-[#0A0B0E]/80 backdrop-blur-xl px-8 flex items-center justify-between sticky top-0 z-20">
-<div className="flex items-center gap-4">
-<span className="text-sm font-mono text-slate-400">Proyecto:
-<strong className="text-white">Mi Tienda Online</strong></span>
-<span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-<span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" /> Activo en producción
-</span>
-</div>
-<button onClick={() => setActiveTab('widget')} className="px-4 py-2 bg-gradient-to-r from-rose-500 to-orange-400 text-white text-xs font-semibold rounded-xl shadow-lg shadow-rose-500/20 hover:opacity-95 transition-opacity">
-Ver Widget de Tienda
-</button>
-</header>
-<main className="flex-1 p-8 max-w-5xl w-full mx-auto space-y-8">
-{cargandoDatos ? (
-<div className="text-center py-20 text-slate-400 font-mono text-sm">Sincronizando plan y datos con Supabase...</div>
-) : (
-<>
-{/* VISTA 1: OVERVIEW */}
-{activeTab === 'overview' && (() => {
-return (
-<div className="max-w-6xl mx-auto p-6 text-white">
-{/* Cabecera */}
-<div className="mb-6 flex justify-between items-center">
-<div>
-<h1 className="text-2xl font-bold flex items-center gap-2">
-📊 Resumen del Proyecto y Centro de Control
-</h1>
-<p className="text-gray-400 text-sm mt-1">
-Estado actual de tu asistente de IA, métricas clave en tiempo
-real y simulador interactivo.
-</p>
-</div>
-<div className="hidden md:flex items-center gap-2">
-<span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-<span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse mr-2"></span>
-Motor IA v4.2 Activo
-</span>
-</div>
-</div>
-{/* TARJETAS SUPERIORES DE ESTADO Y MÉTRICAS (Organizadas en Grid)
-*/}
-<div className="grid grid-cols-1 md:grid-cols-3 gap-5 mb-8">
-{/* Tarjeta 1: Estado del Bot */}
-<div className="bg-zinc-900 border border-zinc-800 rounded-xl p-5">
-<h3 className="text-sm font-medium text-gray-400 mb-2">ESTADO
-DEL CHATBOT</h3>
-<div className="flex items-center gap-2 mb-1">
-<span className="w-3 h-3 rounded-full bg-emerald-500 animate-pulse"></span>
-<span className="text-lg font-bold text-white">Activo y
-Operativo</span>
-</div>
-<p className="text-xs text-gray-400">
-Escuchando peticiones en la web en tiempo real.
-</p>
-</div>
-{/* Tarjeta 2: Chats Hoy (Real y Dinámico) */}
-<div className="bg-zinc-900 border border-zinc-800 rounded-xl p-5">
-<div className="flex justify-between items-start mb-2">
-<h3 className="text-sm font-medium text-gray-400">CHATS
-HOY</h3>
-<span className="text-xs px-2 py-0.5 rounded bg-emerald-950 text-emerald-400 border border-emerald-800">En vivo</span>
-</div>
-<div className="text-3xl font-extrabold text-white mb-1">
-{cargandoDatos ? '...' : chatsHoy}
-</div>
-<p className="text-xs text-gray-400">
-Interacciones reales registradas hoy desde tu widget.
-</p>
-</div>
-{/* Tarjeta 3: Plan Actual */}
-<div className="bg-zinc-900 border border-zinc-800 p-5 rounded-xl">
-<div className="flex justify-between items-start mb-2">
-<span className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Plan Actual</span>
-<span className="text-rose-500">👑</span>
-</div>
-<div className="text-xl font-extrabold text-rose-500 mb-1 capitalize">
-{planCliente || 'Free'}
-</div>
-<p className="text-xs text-gray-400">
-{planCliente === 'free' ? 'Configuración libre (Sin Widget)' :
-'Suscripción activa en VortexAI.'}
-</p>
-</div>
-</div>
+  const inputClass = 'vx-input'
 
-{/* ESTADO DE CONFIGURACIÓN */}
-<div className="grid grid-cols-1 md:grid-cols-4 gap-3 mb-8">
-  <button type="button" onClick={() => setActiveTab('catalogo')} className="text-left bg-zinc-950 border border-zinc-800 rounded-xl p-4 hover:border-zinc-700 transition-all cursor-pointer">
-    <p className="text-[10px] uppercase tracking-wider text-slate-500">Catálogo</p>
-    <p className="text-sm font-semibold text-white mt-1">{userId ? 'Conectado' : 'Cargando...'}</p>
-    <p className="text-[11px] text-slate-500 mt-1">Productos disponibles para la IA</p>
-  </button>
-  <button type="button" onClick={() => setActiveTab('catalogo')} className="text-left bg-zinc-950 border border-zinc-800 rounded-xl p-4 hover:border-zinc-700 transition-all cursor-pointer">
-    <p className="text-[10px] uppercase tracking-wider text-slate-500">Políticas</p>
-    <p className="text-sm font-semibold text-white mt-1">{tiemposEnvio || politicas || faqs ? 'Configuradas' : 'Pendientes'}</p>
-    <p className="text-[11px] text-slate-500 mt-1">Información que consulta el chatbot</p>
-  </button>
-  <button type="button" onClick={() => setActiveTab('ia')} className="text-left bg-zinc-950 border border-zinc-800 rounded-xl p-4 hover:border-zinc-700 transition-all cursor-pointer">
-    <p className="text-[10px] uppercase tracking-wider text-slate-500">Funciones IA</p>
-    <p className="text-sm font-semibold text-white mt-1">{[detectorIdioma, exitIntent, recomendador, modoPersuasivo, carritoAbandonado, analisisSentimiento, cuponesFlash].filter(Boolean).length} activas</p>
-    <p className="text-[11px] text-slate-500 mt-1">Módulos habilitados en tu plan</p>
-  </button>
-  <button type="button" onClick={() => setActiveTab('widget')} className="text-left bg-zinc-950 border border-zinc-800 rounded-xl p-4 hover:border-zinc-700 transition-all cursor-pointer">
-    <p className="text-[10px] uppercase tracking-wider text-slate-500">Widget</p>
-    <p className="text-sm font-semibold text-white mt-1">{planCliente.toLowerCase() === 'free' ? 'Plan Free' : 'Disponible'}</p>
-    <p className="text-[11px] text-slate-500 mt-1">Código de instalación y despliegue</p>
-  </button>
-</div>
-
-{/* PREVIEW REAL DEL CHATBOT */}
-<div className="bg-zinc-950 border border-zinc-800 rounded-xl overflow-hidden shadow-2xl">
-  <div className="px-6 py-4 bg-zinc-900/60 border-b border-zinc-800 flex flex-col md:flex-row md:justify-between md:items-center gap-3">
-    <div>
-      <div className="flex items-center gap-2.5">
-        <div className="w-3 h-3 rounded-full bg-rose-500 animate-pulse"></div>
-        <h3 className="font-semibold text-sm text-white">Preview real del Chatbot</h3>
-      </div>
-      <p className="text-[11px] text-gray-500 mt-1 ml-5">
-        Este es el mismo chatbot que usarán tus clientes: utiliza el mismo backend, catálogo, políticas y configuración guardada.
-      </p>
-    </div>
-    <span className="self-start md:self-auto text-[10px] px-2.5 py-1 rounded-md bg-emerald-500/10 text-emerald-400 font-medium border border-emerald-500/20">
-      IA EN VIVO
-    </span>
-  </div>
-
-  <div className="p-4">
-    <div className="relative h-[430px] overflow-hidden rounded-xl border border-zinc-800 bg-gradient-to-br from-zinc-900 to-zinc-950">
-      {userId ? (
-        <ChatWidget tiendaId={userId} modoPreview />
-      ) : (
-        <div className="h-full flex items-center justify-center text-xs text-slate-500">
-          Cargando identificador de la tienda...
-        </div>
-      )}
-    </div>
-
-    <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-3">
-      <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-3">
-        <p className="text-[10px] uppercase tracking-wider text-slate-500">Base de conocimiento</p>
-        <p className="text-xs text-slate-200 mt-1">Catálogo + políticas + FAQs</p>
-      </div>
-      <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-3">
-        <p className="text-[10px] uppercase tracking-wider text-slate-500">Configuración</p>
-        <p className="text-xs text-slate-200 mt-1">Se carga desde Supabase en tiempo real</p>
-      </div>
-      <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-3">
-        <p className="text-[10px] uppercase tracking-wider text-slate-500">Producción</p>
-        <p className="text-xs text-slate-200 mt-1">El mismo endpoint /api/chat</p>
-      </div>
-    </div>
-  </div>
-</div>
-</div>
-);
-})()}
-{/* VISTA 2: CATÁLOGO & POLÍTICAS */}
-{activeTab === 'catalogo' && (() => {
-return (
-<div className="max-w-6xl mx-auto p-6 text-white">
-{/* Cabecera */}
-<div className="mb-8">
-<h1 className="text-2xl font-bold flex items-center gap-2">
-📦 Catálogo y Base de Conocimiento de la IA
-</h1>
-<p className="text-gray-400 text-sm mt-1">
-Alimenta a tu asistente con los datos de tu tienda, productos y
-políticas de envío para que responda con total precisión.
-</p>
-</div>
-<div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-{/* COLUMNA 1: CATÁLOGO (CSV + NUEVA URL AUTOMÁTICA) */}
-<div className="bg-zinc-950 border border-zinc-800 p-6 rounded-xl flex flex-col justify-between">
-<div>
-<div className="flex items-center justify-between mb-4">
-<h3 className="font-semibold text-base flex items-center gap-2">
-🛍️ Catálogo de Productos
-</h3>
-<span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-semibold">
-Sincronizado
-</span>
-</div>
-<p className="text-xs text-gray-400 mb-5">
-Sube tu archivo de productos o conecta directamente la URL
-de tu tienda online.
-</p>
-{/* NUEVA FUNCIÓN: Sincronización por URL */}
-<div className="mb-4">
-  <label className="block text-xs font-medium text-gray-300 mb-1.5">
-    Sincronizar mediante URL Web (Opcional)
-  </label>
-
-  <div className="flex gap-2">
-    <input
-      type="text"
-      value={urlTienda}
-      onChange={(e) => {
-        setUrlTienda(e.target.value);
-        setMensajeWeb('');
-      }}
-      placeholder="https://mitienda.com"
-      className="w-full bg-zinc-900 border border-zinc-700 rounded-lg p-2.5 text-xs text-white focus:outline-none focus:border-rose-500"
-      disabled={extrayendoWeb}
-    />
-
-    <button
-      type="button"
-      onClick={extraerWeb}
-      disabled={extrayendoWeb || !urlTienda.trim()}
-      className="px-4 py-2.5 bg-zinc-800 hover:bg-zinc-700 text-xs font-medium rounded-lg border border-zinc-700 transition-all text-nowrap disabled:opacity-50 disabled:cursor-not-allowed"
-    >
-      {extrayendoWeb ? 'Extrayendo...' : 'Extraer Web'}
-    </button>
-  </div>
-
-  {mensajeWeb && (
-    <p className="text-xs text-gray-400 mt-2">
-      {mensajeWeb}
-    </p>
-  )}
-</div>
-{/* Subida de CSV original */}
-<div className="space-y-3 pt-2 border-t border-zinc-900">
-  <label className="block text-xs font-medium text-gray-300">
-    Archivo CSV del Catálogo
-  </label>
-
-  <div className="flex items-center justify-between p-3 bg-zinc-900 border border-zinc-700 rounded-lg">
-
-    <span className="text-xs text-gray-400 truncate max-w-[200px]">
-      {archivoCSV
-        ? archivoCSV.name
-        : 'Ningún archivo seleccionado'}
-    </span>
-
-    <label className="cursor-pointer px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 text-xs font-medium rounded-md border border-zinc-600 transition-all text-white">
-      Seleccionar
-
-      <input
-        type="file"
-        accept=".csv,text/csv"
-        className="hidden"
-        onChange={(e) => {
-          const archivo = e.target.files?.[0] || null;
-          setArchivoCSV(archivo);
-          setMensajeCSV('');
-        }}
-      />
-    </label>
-
-  </div>
-
-  {mensajeCSV && (
-    <p className="text-xs text-gray-400">
-      {mensajeCSV}
-    </p>
-  )}
-</div>
-</div>
-<div className="mt-6 pt-4 border-t border-zinc-900">
-<button
-  type="button"
-  onClick={subirCSV}
-  disabled={subiendoCSV || !archivoCSV}
-  className="w-full py-3 bg-rose-600 hover:bg-rose-500 text-white font-medium text-xs rounded-xl transition-all shadow-lg shadow-rose-950/50 disabled:opacity-50 disabled:cursor-not-allowed"
->
-  {subiendoCSV
-    ? 'Procesando catálogo...'
-    : 'Subir y Generar Base de Conocimiento IA'}
-</button>
-</div>
-</div>
-{/* COLUMNA 2: POLÍTICAS, ENVÍOS Y NUEVAS FAQS */}
-<div className="bg-zinc-950 border border-zinc-800 p-6 rounded-xl flex flex-col justify-between">
-<div className="space-y-4">
-<h3 className="font-semibold text-base flex items-center gap-2">
-📜 Políticas de Envío y Devolución
-</h3>
-<p className="text-xs text-gray-400">
-Define las reglas de negocio clave para que el bot resuelva
-dudas frecuentes de postventa.
-</p>
-<div>
-<label className="block text-xs font-medium text-gray-300 mb-1">Tiempos y Costes de Envío</label>
-<textarea
-rows={2}
-value={tiemposEnvio}
-onChange={(e) => setTiemposEnvio(e.target.value)}
-placeholder="Ej: Envíos en 24/48h península. Gratis a partir de 50€."
-className="w-full bg-zinc-900 border border-zinc-700 rounded-lg p-2.5 text-xs text-white focus:outline-none focus:border-rose-500 resize-none"
-/>
-</div>
-<div>
-<label className="block text-xs font-medium text-gray-300 mb-1">Políticas de Devolución</label>
-<textarea
-rows={2}
-value={politicas}
-onChange={(e) => setPoliticas(e.target.value)}
-placeholder="Ej: 30 días naturales para cambios y devoluciones sin coste."
-className="w-full bg-zinc-900 border border-zinc-700 rounded-lg p-2.5 text-xs text-white focus:outline-none focus:border-rose-500 resize-none"
-/>
-</div>
-{/* NUEVA FUNCIÓN: Preguntas Frecuentes Rápidas (FAQs) */}
-<div>
-<label className="block text-xs font-medium text-gray-300 mb-1">✨ FAQs Personalizadas Extra (Opcional)</label>
-<input
-type="text"
-value={faqs}
-onChange={(e) => setFaqs(e.target.value)}
-placeholder="Ej: ¿Tenéis tienda física? -> Sí, en Barcelona."
-className="w-full bg-zinc-900 border border-zinc-700 rounded-lg p-2.5 text-xs text-white focus:outline-none focus:border-rose-500"
-/>
-</div>
-</div>
-<div className="mt-6 pt-4 border-t border-zinc-900">
-<button
-type="button"
-onClick={guardarConfiguracion}
-disabled={guardandoConfig || !userId}
-className="w-full py-3 bg-zinc-900 hover:bg-zinc-800 text-white font-medium text-xs rounded-xl border border-zinc-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
->
-{guardandoConfig ? 'Guardando políticas...' : 'Guardar Políticas y FAQs'}
-</button>
-</div>
-</div>
-</div>
-</div>
-);
-})()}
-{/* ================= VISTA DE FUNCIONES IA (TOGGLES
-AVANZADOS) ================= */}
-{activeTab === 'ia' && (() => {
-// Jerarquía numérica de planes
-const PLAN_HIERARCHY: Record<string, number> = {
-'starter': 1,
-'growth': 2,
-'pro': 3,
-'custom': 4,
-};
-// Nos aseguramos de pasar a minúsculas y quitar espacios para evitar errores con 'PRO' o 'Pro'
-const planLimpio = (planCliente || 'starter').trim().toLowerCase();
-const currentPlanLevel = PLAN_HIERARCHY[planLimpio] || 1;
-
-// Lista de características enlazadas directamente a tus estados de React
-const featuresList = [
-{
-id: 'detector_idioma',
-title: '🌐 Detección Automática de Idioma',
-desc: 'El asistente detecta el idioma del navegador y responde instantáneamente.',
-minPlan: 'starter',
-checked: detectorIdioma,
-onChange: setDetectorIdioma
-},
-{
-id: 'exit_intent',
-title: '🚨 Exit Intent Inteligente',
-desc: 'Detecta cuando el usuario va a abandonar la página y activa el chat proactivamente.',
-minPlan: 'growth',
-checked: exitIntent,
-onChange: setExitIntent
-},
-{
-id: 'cross_selling',
-title: '🛍️ Recomendador Cruzado (Cross-selling)',
-desc: 'Sugiere productos complementarios en tiempo real basados en el carrito.',
-minPlan: 'growth',
-checked: recomendador,
-onChange: setRecomendador
-},
-{
-id: 'modo_persuasivo',
-title: '🔥 Modo Urgencia y Escasez',
-desc: 'Permite al asistente mencionar stock limitado para acelerar la compra.',
-minPlan: 'growth',
-checked: modoPersuasivo,
-onChange: setModoPersuasivo
-},
-{
-id: 'carrito_abandonado',
-title: '💬 Recuperación de Carritos',
-desc: 'Saluda proactivamente a usuarios que regresan a la tienda.',
-minPlan: 'pro',
-checked: carritoAbandonado,
-onChange: setCarritoAbandonado
-},
-{
-id: 'analisis_sentimiento',
-title: '📊 Análisis de Sentimiento en Directo',
-desc: 'Evalúa la frustración del cliente y adapta el tono automáticamente.',
-minPlan: 'pro',
-checked: analisisSentimiento,
-onChange: setAnalisisSentimiento
-},
-];
-return (
-<div className="max-w-5xl mx-auto p-6 text-white">
-<div className="mb-8 flex justify-between items-center">
-<div>
-<h1 className="text-2xl font-bold flex items-center gap-2">
-✨ Funciones IA & Toggles Avanzados
-</h1>
-<p className="text-gray-400 text-sm mt-1">
-Potencia tu asistente con módulos superiores a Voiceflow. Tu
-plan actual: <span className="text-rose-400 font-semibold uppercase">{planCliente}</span>.
-</p>
-</div>
-<button
-onClick={guardarConfiguracion}
-disabled={guardandoConfig}
-className="px-5 py-2.5 bg-rose-600 hover:bg-rose-500 text-white font-medium rounded-xl transition-all shadow-lg shadow-rose-950/50 disabled:opacity-50"
->
-{guardandoConfig ? 'Guardando...' : 'Guardar Cambios'}
-</button>
-</div>
-<div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
-{featuresList.map((feature) => {
-const requiredLevel = PLAN_HIERARCHY[feature.minPlan];
-const isLocked = currentPlanLevel < requiredLevel;
-return (
-<div
-key={feature.id}
-className={`p-5 rounded-xl border transition-all flex flex-col justify-between ${ isLocked ? 'bg-zinc-900/40 border-zinc-800/60 opacity-60' : feature.checked ? 'bg-zinc-900/90 border-rose-500/50 shadow-md shadow-rose-950/20' : 'bg-zinc-950 border-zinc-800' }`}
->
-<div>
-<div className="flex items-center justify-between mb-3">
-<h3 className="font-semibold text-base">{feature.title}</h3>
-{isLocked ? (
-<span className="text-xs px-2 py-0.5 rounded bg-amber-500/10 text-amber-400 border border-amber-500/20">
-🔒 Plan {feature.minPlan.toUpperCase()}
-</span>
-) : (
-<span className="text-xs px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-Disponible
-</span>
-)}
-</div>
-<p className="text-sm text-gray-400 mb-4">{feature.desc}</p>
-</div>
-<div className="flex items-center justify-between pt-3 border-t border-zinc-800">
-<span className="text-xs text-zinc-400">
-{isLocked ? 'Bloqueado por plan' : feature.checked ?
-'Activo' : 'Desactivado'}
-</span>
-<input
-type="checkbox"
-disabled={isLocked}
-checked={!isLocked && feature.checked}
-onChange={(e) => feature.onChange(e.target.checked)}
-className="toggle accent-rose-500 cursor-pointer h-5 w-5 disabled:cursor-not-allowed"
-/>
-</div>
-</div>
-);
-})}
-</div>
-</div>
-);
-})()}
-{/* VISTA: FLUJOS HÍBRIDOS Y REGLAS DE ESCAPE */}
-{activeTab === 'flujos-hibridos' && (
-  <div className="max-w-5xl mx-auto p-6 text-white space-y-8">
-    <div>
-      <h1 className="text-2xl font-bold flex items-center gap-2">
-        🤝 Flujos Híbridos y Reglas de Escape (Handover)
-      </h1>
-      <p className="text-gray-400 text-sm mt-1">
-        Define cómo debe actuar el asistente cuando un cliente se frustra, hace una pregunta compleja o requiere la atención de un agente humano.
-      </p>
-    </div>
-
-    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-      {/* 1. ACCIÓN ANTE DESCONOCIMIENTO (FALLBACK) */}
-      <div className="bg-zinc-950 border border-zinc-800 p-6 rounded-2xl space-y-4">
-        <h3 className="font-semibold text-base text-white">Acción si la IA no encuentra respuesta</h3>
-        <p className="text-xs text-gray-400">Elige qué pasará cuando el catálogo y las directrices no contengan la solución a la duda del usuario.</p>
-        
-        <div className="space-y-2">
-          <label className="block text-xs font-medium text-gray-300">Derivar a:</label>
-          <select
-            value={accionFallback}
-            onChange={(e) => setAccionFallback(e.target.value)}
-            className="w-full bg-zinc-900 border border-zinc-700 rounded-xl p-3 text-xs text-white focus:outline-none focus:border-rose-500"
-          >
-            <option value="formulario">📋 Mostrar formulario de contacto rápido en el chat</option>
-            <option value="whatsapp">📱 Derivar directamente a WhatsApp Business</option>
-            <option value="email">✉️ Enviar alerta automática por correo</option>
-          </select>
-        </div>
-
-        {accionFallback === 'whatsapp' && (
-          <div>
-            <label className="block text-xs font-medium text-gray-300 mb-1">Número de WhatsApp de Soporte</label>
-            <input
-              type="text"
-              value={whatsappSoporte}
-              onChange={(e) => setWhatsappSoporte(e.target.value)}
-              placeholder="Ej: +34600000000"
-              className="w-full bg-zinc-900 border border-zinc-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-rose-500"
-            />
-          </div>
-        )}
-
-        <div>
-          <label className="block text-xs font-medium text-gray-300 mb-1">Mensaje de Desvío que dirá la IA</label>
-          <textarea
-            rows={3}
-            value={mensajeFallback}
-            onChange={(e) => setMensajeFallback(e.target.value)}
-            className="w-full bg-zinc-900 border border-zinc-700 rounded-xl p-3 text-xs text-white focus:outline-none focus:border-rose-500 resize-none"
-          />
-        </div>
-      </div>
-
-      {/* 2. REGLA DE DETECCIÓN DE FRUSTRACIÓN */}
-      <div className="bg-zinc-950 border border-zinc-800 p-6 rounded-2xl space-y-4">
-        <h3 className="font-semibold text-base text-white">Detección Inteligente de Frustración</h3>
-        <p className="text-xs text-gray-400">La IA analiza el tono del usuario. Si detecta que repite la misma pregunta varias veces o muestra descontento, activa el protocolo de escape.</p>
-
-        <div className="space-y-2">
-          <label className="block text-xs font-medium text-gray-300">Intentos fallidos antes de derivar:</label>
-          <select
-            value={umbralFrustracion}
-            onChange={(e) => setUmbralFrustracion(e.target.value)}
-            className="w-full bg-zinc-900 border border-zinc-700 rounded-xl p-3 text-xs text-white focus:outline-none focus:border-rose-500"
-          >
-            <option value="1">Tras 1 intento fallido (Inmediato)</option>
-            <option value="2">Tras 2 intentos fallidos (Recomendado)</option>
-            <option value="3">Tras 3 intentos fallidos (Permisivo)</option>
-          </select>
-        </div>
-
-        <div className="bg-zinc-900/50 border border-zinc-800/80 p-4 rounded-xl space-y-2">
-          <div className="flex items-center gap-2 text-emerald-400 text-xs font-semibold">
-            <span>💡 Ventaja Competitiva SaaS</span>
-          </div>
-          <p className="text-[11px] text-gray-400 leading-relaxed">
-            Esto evita que los clientes abandonen la tienda frustrados por un bot tonto. El sistema asegura una tasa de retención de ventas del 98% derivando a tiempo al equipo humano.
-          </p>
-        </div>
-      </div>
-    </div>
-
-    {/* BOTÓN DE GUARDAR */}
-    <div className="flex justify-end">
-      <button
-        onClick={guardarConfiguracion}
-        disabled={guardandoConfig}
-        className="px-6 py-3 bg-rose-600 hover:bg-rose-500 text-white font-medium rounded-xl transition-all shadow-lg shadow-rose-950/50 disabled:opacity-50 cursor-pointer"
-      >
-        {guardandoConfig ? 'Guardando flujos...' : 'Guardar Reglas de Escape'}
-      </button>
-    </div>
-  </div>
-)}
-{/* VISTA 4: PERSONALIZACIÓN AVANZADA (EXCLUSIVA GROWTH, PRO & CUSTOM) */}
-{activeTab === 'personalizacion' && (() => {
   return (
-    <div className="max-w-5xl mx-auto p-6 text-white">
-      <div className="mb-8">
-        <h1 className="text-2xl font-bold flex items-center gap-2">
-          🎨 Personalización Avanzada del Chatbot
-        </h1>
-        <p className="text-gray-400 text-sm mt-1">
-          Adapta la apariencia visual, los colores de marca, la identidad y el comportamiento estético de tu asistente para superar la experiencia de Voiceflow.
-        </p>
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-        {/* 1. PALETA DE COLORES */}
-        <div className="bg-zinc-950 border border-zinc-800 p-5 rounded-xl">
-          <h3 className="font-semibold text-base mb-2">Paleta de Colores Corporativa</h3>
-          <p className="text-xs text-gray-400 mb-4">Color principal para los botones, bordes activos y burbujas del chat.</p>
-          <div className="flex items-center gap-3">
-            <input
-              type="color"
-              value={colorPrimario}
-              onChange={(e) => setColorPrimario(e.target.value)}
-              className="w-12 h-12 rounded-lg bg-transparent cursor-pointer border border-zinc-700"
-            />
-            <div>
-              <span className="text-sm font-medium block">Color Principal del Chat</span>
-              <span className="text-xs text-rose-400 font-mono">Código actual: {colorPrimario}</span>
-            </div>
+    <div className="vx-dashboard">
+      <aside className={`vx-sidebar ${mobileNav ? 'open' : ''}`}>
+        <div className="vx-sidebar-top">
+          <div className="vx-brand-row">
+            <a href="/" className="vx-brand"><span><Sparkles size={15} /></span>Vortex<span>AI</span></a>
+            <button className="vx-mobile-close" onClick={() => setMobileNav(false)}><X size={18} /></button>
           </div>
-        </div>
-
-        {/* 2. DISEÑO DEL AVATAR (Con opción de imagen propia) */}
-        <div className="bg-zinc-950 border border-zinc-800 p-5 rounded-xl">
-          <h3 className="font-semibold text-base mb-2">Diseño del Avatar</h3>
-          <p className="text-xs text-gray-400 mb-4">Elige la identidad visual o introduce la URL del logo de tu tienda.</p>
-          <select
-            value={avatarEstilo}
-            onChange={(e) => setAvatarEstilo(e.target.value)}
-            className="w-full bg-zinc-900 border border-zinc-700 rounded-lg p-3 text-sm text-white focus:outline-none focus:border-rose-500 mb-3"
-          >
-            <option value="moderno">🤖 Robot / Icono Moderno</option>
-            <option value="sparkle">✨ Chispa de IA</option>
-            <option value="custom">🖼️ Logo / Imagen Propia (URL)</option>
-          </select>
-
-          {avatarEstilo === 'custom' && (
-            <input
-              type="url"
-              value={avatarUrlCustom || ''}
-              onChange={(e) => setAvatarUrlCustom(e.target.value)}
-              placeholder="https://tu-tienda.com/logo-avatar.png"
-              className="w-full bg-zinc-900 border border-zinc-700 rounded-lg p-2.5 text-xs text-white focus:outline-none focus:border-rose-500"
-            />
-          )}
-        </div>
-
-        {/* 3. POSICIÓN DEL WIDGET (Conectado con estados) */}
-        <div className="bg-zinc-950 border border-zinc-800 p-5 rounded-xl">
-          <h3 className="font-semibold text-base mb-2">📍 Posición del Widget en la Tienda</h3>
-          <p className="text-xs text-gray-400 mb-4">Dónde flotará la burbuja del chat en el ecommerce.</p>
-          <div className="grid grid-cols-2 gap-3">
-            <button
-              type="button"
-              onClick={() => setPosicionWidget('derecha')}
-              className={`p-3 text-sm rounded-lg border font-medium text-center transition-all cursor-pointer ${
-                posicionWidget === 'derecha'
-                  ? 'border-rose-500 bg-rose-500/10 text-rose-400'
-                  : 'border-zinc-800 bg-zinc-900 text-zinc-400 hover:border-zinc-700'
-              }`}
-            >
-              Derecha (Recomendado)
-            </button>
-            <button
-              type="button"
-              onClick={() => setPosicionWidget('izquierda')}
-              className={`p-3 text-sm rounded-lg border font-medium text-center transition-all cursor-pointer ${
-                posicionWidget === 'izquierda'
-                  ? 'border-rose-500 bg-rose-500/10 text-rose-400'
-                  : 'border-zinc-800 bg-zinc-900 text-zinc-400 hover:border-zinc-700'
-              }`}
-            >
-              Izquierda
-            </button>
-          </div>
-        </div>
-
-        {/* 4. NOMBRE PÚBLICO DEL ASISTENTE (Conectado con estados) */}
-        <div className="bg-zinc-950 border border-zinc-800 p-5 rounded-xl">
-          <h3 className="font-semibold text-base mb-2">🏷️ Nombre Público del Asistente</h3>
-          <p className="text-xs text-gray-400 mb-4">Título que se muestra en la cabecera superior del chat.</p>
-          <input
-            type="text"
-            value={nombreAsistente}
-            onChange={(e) => setNombreAsistente(e.target.value)}
-            className="w-full bg-zinc-900 border border-zinc-700 rounded-lg p-3 text-sm text-white focus:outline-none focus:border-rose-500"
-            placeholder="Ej: Soporte Tienda Online"
-          />
-        </div>
-      </div>
-
-      {/* MENSAJE DE BIENVENIDA */}
-      <div className="bg-zinc-950 border border-zinc-800 p-5 rounded-xl mb-8">
-        <h3 className="font-semibold text-base mb-2">Mensaje de Bienvenida Inicial</h3>
-        <p className="text-xs text-gray-400 mb-3">Este texto aparecerá en la burbuja principal cuando tus clientes abran el widget por primera vez.</p>
-        <textarea
-          rows={3}
-          value={mensajeBienvenida}
-          onChange={(e) => setMensajeBienvenida(e.target.value)}
-          className="w-full bg-zinc-900 border border-zinc-700 rounded-lg p-3 text-sm text-white focus:outline-none focus:border-rose-500"
-          placeholder="¡Hola! 👋 Soy el asistente virtual..."
-        />
-      </div>
-
-      {/* BOTÓN DE GUARDAR */}
-      <div className="flex justify-end">
-        <button
-          onClick={guardarConfiguracion}
-          disabled={guardandoConfig}
-          className="px-6 py-3 bg-rose-600 hover:bg-rose-500 text-white font-medium rounded-xl transition-all shadow-lg shadow-rose-950/50 disabled:opacity-50 cursor-pointer"
-        >
-          {guardandoConfig ? 'Guardando cambios...' : 'Guardar y Aplicar Cambios de Diseño'}
-        </button>
-      </div>
-    </div>
-  );
-})()}
-{/* VISTA: ANALÍTICAS Y RENDIMIENTO COMERCIAL (100% REAL Y EN TIEMPO REAL) */}
-{activeTab === 'analiticas' && (
-  <div className="max-w-6xl mx-auto p-6 text-white space-y-8">
-    {/* CABECERA */}
-    <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-5">
-      <div>
-        <div className="flex items-center gap-2 mb-2">
-          <span className="w-2.5 h-2.5 rounded-full bg-rose-500 animate-pulse"></span>
-          <span className="text-[10px] uppercase tracking-wider text-rose-400 font-semibold">
-            Intelligence Center
-          </span>
-        </div>
-        <h1 className="text-2xl font-bold flex items-center gap-2">
-          📈 Analíticas y Rendimiento Comercial
-        </h1>
-        <p className="text-gray-400 text-sm mt-1 max-w-2xl">
-          Métricas calculadas exclusivamente a partir de las conversaciones registradas por tu asistente.
-        </p>
-      </div>
-
-      {/* SELECTOR DE PERIODO */}
-      <div className="flex bg-zinc-950 border border-zinc-800 p-1 rounded-xl w-full lg:w-auto">
-        {['24h', '7d', '30d'].map((rango) => (
-          <button
-            key={rango}
-            type="button"
-            onClick={() => setRangoFechas(rango)}
-            className={`flex-1 lg:flex-none px-4 py-2 rounded-lg text-xs font-medium transition-all cursor-pointer ${
-              rangoFechas === rango
-                ? 'bg-white/[0.08] text-white font-semibold'
-                : 'text-slate-400 hover:text-white'
-            }`}
-          >
-            {rango === '24h'
-              ? 'Últimas 24h'
-              : rango === '7d'
-                ? 'Últimos 7 días'
-                : 'Últimos 30 días'}
-          </button>
-        ))}
-      </div>
-    </div>
-
-    {/* MÉTRICAS PRINCIPALES */}
-    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-      {/* CONVERSACIONES */}
-      <div className="bg-zinc-950 border border-zinc-800 p-5 rounded-2xl space-y-3">
-        <div className="flex items-center justify-between">
-          <span className="text-xs text-slate-400 font-medium">Conversaciones</span>
-          <span className="text-[10px] px-2 py-1 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-            Datos reales
-          </span>
-        </div>
-        <div className="flex items-end justify-between gap-3">
-          <h3 className="text-3xl font-bold text-white">
-            {cargandoAnaliticas ? '...' : metricasReales.totalChats}
-          </h3>
-          <span className="text-[11px] text-slate-400">
-            {obtenerEtiquetaVariacion(metricasReales.variacionChats)}
-          </span>
-        </div>
-        <p className="text-[11px] text-slate-500">
-          Conversaciones únicas con identificador real.
-        </p>
-      </div>
-
-      {/* RESOLUCIÓN */}
-      <div className="bg-zinc-950 border border-zinc-800 p-5 rounded-2xl space-y-3">
-        <div className="flex items-center justify-between">
-          <span className="text-xs text-slate-400 font-medium">Tasa de resolución</span>
-          <span className="text-[10px] px-2 py-1 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-            Real
-          </span>
-        </div>
-        <div className="flex items-end justify-between gap-3">
-          <h3 className="text-3xl font-bold text-white">
-            {cargandoAnaliticas ? '...' : metricasReales.tasaResolucion}
-          </h3>
-          <span className="text-[11px] text-slate-400">
-            {obtenerEtiquetaVariacion(
-              metricasReales.variacionResolucion,
-              'puntos'
-            )}
-          </span>
-        </div>
-        <p className="text-[11px] text-slate-500">
-          Conversaciones resueltas sin derivación.
-        </p>
-      </div>
-
-      {/* MENSAJES */}
-      <div className="bg-zinc-950 border border-zinc-800 p-5 rounded-2xl space-y-3">
-        <div className="flex items-center justify-between">
-          <span className="text-xs text-slate-400 font-medium">Mensajes procesados</span>
-          <span className="text-[10px] px-2 py-1 rounded-full bg-zinc-800 text-slate-400 border border-zinc-700">
-            Volumen
-          </span>
-        </div>
-        <div className="flex items-end justify-between gap-3">
-          <h3 className="text-3xl font-bold text-white">
-            {cargandoAnaliticas ? '...' : metricasReales.mensajesProcesados}
-          </h3>
-          <span className="text-[11px] text-slate-400">
-            {obtenerEtiquetaVariacion(metricasReales.variacionMensajes)}
-          </span>
-        </div>
-        <p className="text-[11px] text-slate-500">
-          Mensajes registrados en el periodo seleccionado.
-        </p>
-      </div>
-
-      {/* VISITANTES */}
-      <div className="bg-zinc-950 border border-zinc-800 p-5 rounded-2xl space-y-3">
-        <div className="flex items-center justify-between">
-          <span className="text-xs text-slate-400 font-medium">Visitantes únicos</span>
-          <span className="text-[10px] px-2 py-1 rounded-full bg-rose-500/10 text-rose-400 border border-rose-500/20">
-            Identificados
-          </span>
-        </div>
-        <div className="flex items-end justify-between gap-3">
-          <h3 className="text-3xl font-bold text-white">
-            {cargandoAnaliticas ? '...' : metricasReales.visitantesUnicos}
-          </h3>
-        </div>
-        <p className="text-[11px] text-slate-500">
-          Visitantes con visitorId registrado por el widget.
-        </p>
-      </div>
-    </div>
-
-    {/* RESUMEN OPERATIVO */}
-    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-      <div className="bg-zinc-950 border border-zinc-800 rounded-2xl p-5">
-        <p className="text-[10px] uppercase tracking-wider text-slate-500">Conversaciones resueltas</p>
-        <p className="text-xl font-bold text-emerald-400 mt-2">
-          {cargandoAnaliticas ? '...' : metricasReales.conversacionesResueltas}
-        </p>
-        <p className="text-[11px] text-slate-500 mt-1">Marcadas como resueltas por el backend.</p>
-      </div>
-
-      <div className="bg-zinc-950 border border-zinc-800 rounded-2xl p-5">
-        <p className="text-[10px] uppercase tracking-wider text-slate-500">Consultas no resueltas</p>
-        <p className="text-xl font-bold text-rose-400 mt-2">
-          {cargandoAnaliticas ? '...' : metricasReales.consultasNoResueltas}
-        </p>
-        <p className="text-[11px] text-slate-500 mt-1">Conversaciones que no figuran como resueltas.</p>
-      </div>
-
-      <div className="bg-zinc-950 border border-zinc-800 rounded-2xl p-5">
-        <p className="text-[10px] uppercase tracking-wider text-slate-500">Estado de los datos</p>
-        <div className="flex items-center gap-2 mt-3">
-          <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-          <span className="text-sm font-semibold text-white">Sincronización activa</span>
-        </div>
-        <p className="text-[11px] text-slate-500 mt-1">Las nuevas interacciones actualizan las métricas automáticamente.</p>
-      </div>
-    </div>
-
-    {/* TEMAS MÁS CONSULTADOS */}
-    <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
-      <div className="lg:col-span-3 bg-zinc-950 border border-zinc-800 p-6 rounded-2xl">
-        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 mb-5">
-          <div>
-            <h3 className="font-semibold text-base text-white">📦 Temas más consultados</h3>
-            <p className="text-xs text-slate-400 mt-1">
-              Clasificación de las preguntas reales de los clientes durante el periodo seleccionado.
-            </p>
-          </div>
-          <span className="text-[10px] px-2.5 py-1 rounded-lg bg-zinc-900 border border-zinc-800 text-slate-400">
-            Basado en mensajes de cliente
-          </span>
-        </div>
-
-        <div className="space-y-3">
-          {productosFrecuentes.map((item, index) => (
-            <div
-              key={index}
-              className="bg-zinc-900/50 border border-zinc-800/60 p-4 rounded-xl"
-            >
-              <div className="flex items-center justify-between gap-4 mb-2">
-                <div className="min-w-0">
-                  <p className="text-xs font-semibold text-white truncate">{item.nombre}</p>
-                  <p className="text-[11px] text-slate-400 mt-0.5">{item.consultas}</p>
-                </div>
-                <span className="text-[11px] font-semibold text-rose-400 shrink-0">{item.porcentaje}</span>
-              </div>
-              <div className="w-full bg-zinc-800 h-1.5 rounded-full overflow-hidden">
-                <div
-                  className="bg-rose-500 h-full rounded-full transition-all duration-500"
-                  style={{ width: item.porcentaje }}
-                ></div>
-              </div>
+          <div className="vx-plan-pill">{currentPlan}</div>
+          {(['Workspace','Intelligence','Deployment','Account'] as const).map(section => (
+            <div className="vx-nav-group" key={section}>
+              <small>{section}</small>
+              {NAV.filter(n => n.section === section).map(item => {
+                const Icon = item.icon
+                return <button key={item.id} onClick={() => changeTab(item.id)} className={`vx-nav-item ${tab === item.id ? 'active' : ''}`}><Icon size={17} /><span>{item.label}</span>{item.id === 'widget' && planLocked('starter') && <Lock size={12} />}</button>
+              })}
             </div>
           ))}
         </div>
-      </div>
+        <div className="vx-sidebar-bottom">
+          <div className="vx-support-card"><LifeBuoy size={16} /><div><strong>¿Necesitas ayuda?</strong><span>contact@vortexaicom.com</span></div></div>
+          <a href="/login" className="vx-nav-item vx-logout"><LogOut size={17} />Cerrar sesión</a>
+        </div>
+      </aside>
 
-      {/* EXPORTACIÓN */}
-      <div className="lg:col-span-2 bg-zinc-950 border border-zinc-800 p-6 rounded-2xl flex flex-col justify-between gap-6">
-        <div>
-          <div className="flex items-center gap-2 mb-2">
-            <span className="text-lg">🚀</span>
-            <h3 className="font-semibold text-base text-white">Exportación de datos</h3>
+      <div className="vx-main">
+        <header className="vx-topbar">
+          <button className="vx-mobile-menu" onClick={() => setMobileNav(true)}><Menu size={20} /></button>
+          <div className="vx-breadcrumb"><span>Workspace</span><ChevronDown size={13} /><strong>{NAV.find(x => x.id === tab)?.label}</strong></div>
+          <div className="vx-top-actions">
+            <span className="vx-live"><i /> Sistema operativo</span>
+            <button onClick={() => loadAnalytics(userId, range)} title="Actualizar"><RefreshCw size={16} /></button>
+            <a href="/" title="Ir a VortexAI"><ExternalLink size={16} /></a>
           </div>
-          <p className="text-xs text-slate-400 leading-relaxed">
-            Descarga las interacciones registradas por VortexAI para analizarlas fuera del dashboard.
-          </p>
-        </div>
+        </header>
 
-        <div className="bg-zinc-900/50 border border-zinc-800/80 p-4 rounded-xl">
-          <p className="text-[10px] uppercase tracking-wider text-slate-500">Incluye</p>
-          <p className="text-xs text-slate-200 mt-2 leading-relaxed">
-            Fecha · conversación · visitante · remitente · estado de resolución · mensaje
-          </p>
-        </div>
+        <main className="vx-content">
+          {notice && <div className="vx-notice"><Check size={16} />{notice}<button onClick={() => setNotice('')}><X size={14} /></button></div>}
 
-        <button
-          type="button"
-          onClick={descargarCSVReal}
-          className="w-full py-3 bg-white/[0.08] hover:bg-white/[0.12] text-white text-xs font-semibold rounded-xl transition-all cursor-pointer border border-zinc-700 shadow-md"
-        >
-          📥 Descargar informe CSV
-        </button>
-      </div>
-    </div>
-
-    <p className="text-[10px] text-slate-600 leading-relaxed">
-      Nota: VortexAI no muestra porcentajes ficticios. La tasa de resolución se calcula a partir de los registros con conversation_id y resuelta almacenados en Supabase. Las variaciones comparan el periodo seleccionado con el periodo inmediatamente anterior de la misma duración.
-    </p>
-  </div>
-)}
-{/* VISTA 5: WIDGET E INSTALACIÓN */}
-{activeTab === 'widget' && (() => {
-  const PLAN_HIERARCHY: Record<string, number> = {
-    free: 0,
-    starter: 1,
-    growth: 2,
-    pro: 3,
-    custom: 4,
-  };
-
-  const currentPlanLevel = PLAN_HIERARCHY[planCliente?.toLowerCase()] || 0;
-  const widgetRequiredLevel = PLAN_HIERARCHY['starter'];
-  const isWidgetLocked = currentPlanLevel < widgetRequiredLevel;
-
-  if (isWidgetLocked) {
-    return (
-      <div className="bg-zinc-950 border border-zinc-800 rounded-2xl p-12 text-center max-w-xl mx-auto space-y-4 my-12">
-        <div className="w-12 h-12 bg-amber-500/10 border border-amber-500/20 text-amber-400 rounded-full flex items-center justify-center mx-auto">
-          <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path></svg>
-        </div>
-        <h2 className="text-xl font-bold text-white">Función exclusiva para Plan Starter o superior</h2>
-        <p className="text-sm text-gray-400">
-          Actualmente te encuentras en el plan <span className="text-rose-400 font-semibold uppercase">{planCliente}</span>. Para obtener el código de integración y conectar el widget en tu tienda online, necesitas actualizar tu suscripción.
-        </p>
-        <button
-          onClick={() => setActiveTab('settings')}
-          className="px-6 py-3 bg-gradient-to-r from-rose-600 to-amber-600 text-white text-xs font-semibold rounded-xl shadow-lg shadow-rose-950/50 hover:opacity-90 transition-all cursor-pointer"
-        >
-          Ver Planes Disponibles
-        </button>
-      </div>
-    );
-  }
-
-  // CORREGIDO: Usamos el origen actual de la ventana de forma dinámica para evitar errores de dominio
-  const tiendaIdReal = userId || 'id-no-encontrado';
-  const currentOrigin = typeof window !== 'undefined' ? window.location.origin : 'https://vortexaiofficial.vercel.app/';
- // Añadimos el atributo data-tienda-id que el widget.js está buscando por dentro
-  const codigoWidget = `<script src="${currentOrigin}/widget.js" data-tienda-id="${tiendaIdReal}" async></script>`;
-
-  const copiarAlPortapapeles = () => {
-    navigator.clipboard.writeText(codigoWidget);
-    setCopiado(true);
-    setTimeout(() => setCopiado(false), 2500);
-  };
-
-  return (
-    <div className="max-w-5xl mx-auto p-6 text-white">
-      {/* Cabecera */}
-      <div className="mb-8">
-        <h1 className="text-2xl font-bold flex items-center gap-2">
-          ⚡ Instalación del Widget
-        </h1>
-        <p className="text-gray-400 text-sm mt-1">
-          Integra tu asistente de IA en tu tienda online en menos de 2 minutos copiando una sola línea de código personalizada.
-        </p>
-      </div>
-
-      {/* Tarjeta principal con el código */}
-      <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6 mb-8 shadow-xl">
-        <div className="flex justify-between items-center mb-3">
-          <div className="flex items-center gap-2">
-            <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
-            <h3 className="text-sm font-semibold text-gray-200">Código de Integración Universal</h3>
-          </div>
-          <span className="text-xs px-2.5 py-1 rounded bg-zinc-800 text-gray-400 border border-zinc-700">
-            HTML / JavaScript
-          </span>
-        </div>
-        <p className="text-xs text-gray-400 mb-4">
-          Pega este código justo antes de la etiqueta de cierre <code className="text-rose-400 bg-zinc-950 px-1.5 py-0.5 rounded">&lt;/body&gt;</code> en el archivo principal de tu sitio web.
-        </p>
-
-        {/* Caja de código con botón de copiar */}
-        <div className="relative bg-zinc-950 border border-zinc-800 rounded-xl p-4 font-mono text-xs text-rose-300 overflow-x-auto flex items-center justify-between gap-4">
-          <code className="select-all break-all">{codigoWidget}</code>
-          <button
-            onClick={copiarAlPortapapeles}
-            className="shrink-0 bg-rose-600 hover:bg-rose-500 text-white text-xs font-medium px-4 py-2 rounded-lg transition-all shadow-md flex items-center gap-1.5 cursor-pointer"
-          >
-            {copiado ? (
-              <>
-                <span>✅</span> ¡Copiado!
-              </>
-            ) : (
-              <>
-                <span>📋</span> Copiar código
-              </>
-            )}
-          </button>
-        </div>
-      </div>
-
-      {/* Guías rápidas por plataforma */}
-      <h2 className="text-lg font-bold mb-4 text-gray-200">Guías de instalación rápida</h2>
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-        {/* Shopify */}
-        <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-5 flex flex-col justify-between">
-          <div>
-            <div className="text-2xl mb-2">🛍️</div>
-            <h4 className="font-bold text-sm text-white mb-1">Shopify</h4>
-            <p className="text-xs text-gray-400 leading-relaxed">
-              Ve a <b>Tienda online &gt; Temas &gt; Editar código</b>, busca el archivo <code className="text-gray-300">theme.liquid</code> y pégalo antes de <code className="text-gray-300">&lt;/body&gt;</code>.
-            </p>
-          </div>
-          <span className="mt-4 text-[11px] text-rose-400 font-medium">Compatible con OS 2.0 →</span>
-        </div>
-
-        {/* WordPress / WooCommerce */}
-        <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-5 flex flex-col justify-between">
-          <div>
-            <div className="text-2xl mb-2">🌐</div>
-            <h4 className="font-bold text-sm text-white mb-1">WordPress / WooCommerce</h4>
-            <p className="text-xs text-gray-400 leading-relaxed">
-              Usa un plugin gratuito como <i>"Insert Headers and Footers"</i> y pega el código en la sección del pie de página (Footer).
-            </p>
-          </div>
-          <span className="mt-4 text-[11px] text-rose-400 font-medium">Plugins recomendados →</span>
-        </div>
-
-        {/* Custom / HTML */}
-        <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-5 flex flex-col justify-between">
-          <div>
-            <div className="text-2xl mb-2">💻</div>
-            <h4 className="font-bold text-sm text-white mb-1">Web Personal / Custom</h4>
-            <p className="text-xs text-gray-400 leading-relaxed">
-              Inyéctalo directamente en tu plantilla HTML principal de React, Next.js, Vue o PHP de forma asíncrona.
-            </p>
-          </div>
-          <span className="mt-4 text-[11px] text-rose-400 font-medium">Carga asíncrona →</span>
-        </div>
-      </div>
-    </div>
-  );
-})()}
-{/* VISTA 6: LOGS */}
-{activeTab === 'logs' && (() => {
-  // Estados locales específicos para la vista de logs (recuerda declarar estos estados arriba en tu componente principal o dentro de la vista si manejas componentes, pero como usas IIFE aquí los adaptamos con un hook o usaremos los estados globales del componente principal).
-  // Nota: Lo ideal es que 'logsConversaciones', 'cargandoLogs' y 'filtroRemitente' estén declarados arriba con los useState principales. Te dejo abajo cómo declararlos.
-  
-  return (
-    <div className="max-w-5xl mx-auto p-6 text-white space-y-6 animate-fadeIn">
-      {/* Cabecera */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight text-white flex items-center gap-2">
-            💬 Conversaciones y Logs en Vivo
-          </h1>
-          <p className="text-slate-400 text-sm mt-1">
-            Historial detallado de todas las interacciones de tus clientes con el asistente de IA.
-          </p>
-        </div>
-
-        {/* Filtro rápido o botón de actualizar */}
-        <div className="flex items-center gap-3">
-          <span className="text-xs text-emerald-400 font-semibold bg-emerald-500/10 border border-emerald-500/20 px-3 py-1.5 rounded-xl flex items-center gap-1.5">
-            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-            Sincronizado en tiempo real
-          </span>
-        </div>
-      </div>
-
-      {/* Contenedor principal de la tabla / lista de logs */}
-      <div className="bg-zinc-950 border border-zinc-800 rounded-2xl shadow-xl overflow-hidden">
-        {cargandoLogs ? (
-          <div className="py-20 text-center space-y-3">
-            <div className="w-6 h-6 border-2 border-rose-500 border-t-transparent rounded-full animate-spin mx-auto"></div>
-            <p className="text-xs text-slate-400">Cargando historial de conversaciones...</p>
-          </div>
-        ) : logsConversaciones.length === 0 ? (
-          <div className="bg-[#12141C] border border-white/[0.08] rounded-3xl p-8 shadow-xl text-center py-16 space-y-3">
-            <div className="text-3xl">📭</div>
-            <p className="text-white font-semibold text-sm">No hay conversaciones registradas todavía</p>
-            <p className="text-xs text-slate-500 max-w-sm mx-auto">
-              Cuando tus clientes comiencen a hablar con el widget en tu tienda online, los mensajes aparecerán aquí instantáneamente.
-            </p>
-          </div>
-        ) : (
-          <div className="divide-y divide-zinc-900 overflow-x-auto">
-            <div className="bg-zinc-900/40 px-6 py-3 grid grid-cols-12 text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
-              <div className="col-span-3">Fecha y Hora</div>
-              <div className="col-span-2">Remitente</div>
-              <div className="col-span-7">Mensaje / Interacción</div>
-            </div>
-
-            <div className="divide-y divide-zinc-900/60">
-              {logsConversaciones.map((log: any, index: number) => (
-                <div key={log.id || index} className="px-6 py-4 grid grid-cols-12 items-center hover:bg-zinc-900/20 transition-colors text-xs">
-                  <div className="col-span-3 text-slate-400 font-mono text-[11px]">
-                    {new Date(log.created_at).toLocaleString()}
+          {loading && !userId ? (
+            <div className="vx-loading"><div className="vx-spinner" /><p>Sincronizando tu workspace…</p></div>
+          ) : (
+            <>
+              {tab === 'overview' && (
+                <>
+                  <SectionTitle eyebrow="Overview" title={`Buenos días. Tu asistente está listo.`} description={`${storeName} · visión general de actividad, salud del conocimiento y experiencia del cliente.`} />
+                  <div className="vx-hero-grid">
+                    <Card className="vx-overview-hero">
+                      <div className="vx-hero-kicker"><span className="vx-status-dot" /> En producción</div>
+                      <h2>Una IA que conoce tu tienda.</h2>
+                      <p>Catálogo, políticas, conversaciones y automatizaciones en un único sistema.</p>
+                      <div className="vx-hero-actions"><button className="vx-btn primary" onClick={() => changeTab('personalizacion')}>Personalizar asistente <ArrowUpRight size={15} /></button><button className="vx-btn ghost" onClick={() => changeTab('widget')}>Instalar widget</button></div>
+                      <div className="vx-hero-tags"><span><ShieldCheck size={13} /> Base de conocimiento</span><span><Activity size={13} /> Datos en vivo</span><span><Zap size={13} /> Automatización</span></div>
+                    </Card>
+                    <Card className="vx-health">
+                      <div className="vx-card-head"><div><span className="vx-eyebrow">Health score</span><h3>{health}<small>/100</small></h3></div><span className="vx-health-ring" style={{ ['--health' as string]: `${health * 3.6}deg` }}><span>{health}</span></span></div>
+                      <p>Basado únicamente en la configuración y datos disponibles de tu cuenta.</p>
+                      <div className="vx-progress"><span style={{ width: `${health}%` }} /></div>
+                      <button className="vx-link" onClick={() => changeTab('catalogo')}>Mejorar configuración <ArrowUpRight size={14} /></button>
+                    </Card>
                   </div>
-                  <div className="col-span-2">
-                    <span className={`inline-flex px-2.5 py-1 rounded-full text-[10px] font-semibold ${
-                      log.remitente === 'usuario' || log.remitente === 'cliente' 
-                        ? 'bg-blue-500/10 text-blue-400 border border-blue-500/20' 
-                        : 'bg-rose-500/10 text-rose-400 border border-rose-500/20'
-                    }`}>
-                      {log.remitente || 'Visitante'}
-                    </span>
-                  </div>
-                  <div className="col-span-7 text-slate-200 font-normal leading-relaxed break-words pr-4">
-                    {log.texto}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-})()}
-{/* VISTA 7: SETTINGS */}
-{activeTab === 'settings' && (() => {
-  const planesDisponibles = [
+
+                  <div className="vx-metric-grid">
+  {[
     {
-      id: 'free',
-      nombre: 'Free',
-      precio: '0€/mes',
-      desc: 'Configuración libre (Sin Widget).',
-      features: ['Configuración completa', 'Sin widget activo', 'Ideal para pruebas'],
-      tipo: 'cambio-estado'
+      label: 'Conversaciones',
+      value: metrics.totalChats,
+      delta: metricDelta(
+        metrics.totalChats,
+        previousMetrics.totalChats
+      ),
+      Icon: MessageSquare,
     },
     {
-      id: 'starter',
-      nombre: 'Starter',
-      precio: '49.99€/mes',
-      desc: 'Ideal para tiendas que empiezan.',
-      features: ['Hasta 1,000 chats / mes', 'Widget desbloqueado', 'Soporte estándar'],
-      tipo: 'stripe',
-      stripeUrl: 'https://buy.stripe.com/5kQcMY3K76wE9hJ5Jq7ss02'
+      label: 'Mensajes procesados',
+      value: metrics.mensajes,
+      delta: metricDelta(
+        metrics.mensajes,
+        previousMetrics.mensajes
+      ),
+      Icon: Activity,
     },
     {
-      id: 'growth',
-      nombre: 'Growth',
-      precio: '129.99€/mes',
-      desc: 'Para escalar ventas con IA avanzada.',
-      features: ['Hasta 5,000 chats / mes', 'IA Avanzada & Toggles', 'Soporte prioritario'],
-      tipo: 'stripe',
-      stripeUrl: 'https://buy.stripe.com/7sY9AM80ndZ60Ld3Bi7ss03'
+      label: 'Visitantes únicos',
+      value: metrics.visitantes,
+      delta: metricDelta(
+        metrics.visitantes,
+        previousMetrics.visitantes
+      ),
+      Icon: Users,
     },
     {
-      id: 'pro',
-      nombre: 'Pro',
-      precio: '249.99€/mes',
-      desc: 'Automatización total y máxima conversión.',
-      features: ['Chats ilimitados', 'Analíticas avanzadas', 'Soporte dedicado 24/7'],
-      tipo: 'stripe',
-      stripeUrl: 'https://buy.stripe.com/fZu4gs5Sf5sAalNc7O7ss04'
+      label: 'Resolución',
+      value: `${metrics.tasaResolucion}%`,
+      delta: metricDelta(
+        metrics.tasaResolucion,
+        previousMetrics.tasaResolucion
+      ),
+      Icon: Check,
     },
-    {
-      id: 'custom',
-      nombre: 'Custom',
-      precio: 'A medida',
-      desc: 'Solución Enterprise para grandes marcas.',
-      features: ['Soluciones a medida', 'Integración ERP / CRM', 'SLA garantizado'],
-      tipo: 'custom'
-    },
-  ];
-
-  return (
-    <div className="max-w-6xl mx-auto p-6 text-white relative">
-      {/* Cabecera */}
-      <div className="mb-8">
-        <h1 className="text-2xl font-bold flex items-center gap-2">
-          ⚙️ Configuración de la Cuenta y Suscripción
-        </h1>
-        <p className="text-gray-400 text-sm mt-1">
-          Gestiona tu plan activo, los límites de tu SaaS y los accesos corporativos de tu tienda online.
-        </p>
+  ].map(({ label, value, delta, Icon }) => (
+    <Card className="vx-metric" key={label}>
+      <div className="vx-metric-icon">
+        <Icon size={17} />
       </div>
 
-      {/* SECCIÓN 1: SELECCIÓN DE PLANES */}
-      <div className="mb-8">
-        <h3 className="text-sm font-semibold text-gray-300 uppercase tracking-wider mb-4">
-          Planes Disponibles en VortexAI
-        </h3>
-        <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4">
-          {planesDisponibles.map((p) => {
-            const esActivo = planCliente.toLowerCase() === p.id;
-            return (
-              <div
-                key={p.id}
-                className={`p-5 rounded-2xl border transition-all flex flex-col justify-between ${
-                  esActivo
-                    ? 'bg-rose-950/20 border-rose-500 shadow-lg shadow-rose-950/40 ring-1 ring-rose-500'
-                    : 'bg-zinc-950 border-zinc-800 hover:border-zinc-700'
-                }`}
-              >
-                <div>
-                  <div className="flex justify-between items-center mb-2">
-                    <h4 className="font-bold text-base capitalize">{p.nombre}</h4>
-                    {esActivo && (
-                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-rose-500 text-white font-semibold">
-                        Actual
-                      </span>
-                    )}
-                  </div>
-                  <div className="text-xl font-extrabold text-white mb-1">{p.precio}</div>
-                  <p className="text-xs text-gray-400 mb-4">{p.desc}</p>
-                  <ul className="space-y-1.5 mb-6 text-xs text-gray-300">
-                    {p.features.map((f, idx) => (
-                      <li key={idx} className="flex items-center gap-1.5">
-                        <span className="text-rose-500">✓</span> {f}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
+      <span>{label}</span>
 
-                {p.tipo === 'stripe' ? (
-                  <a
-                    href={p.stripeUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="w-full bg-rose-600 hover:bg-rose-500 text-white py-2 rounded-xl text-xs font-medium transition-all text-center block shadow-md"
-                  >
-                    Pagar {p.nombre}
-                  </a>
-                ) : p.tipo === 'custom' ? (
-                  <button
-                    type="button"
-                    onClick={() => setModalCustomAbierto(true)}
-                    className="w-full bg-emerald-600 hover:bg-emerald-500 text-white py-2 rounded-xl text-xs font-medium transition-all text-center cursor-pointer shadow-md"
-                  >
-                    Contactar
-                  </button>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => setPlanCliente(p.id)}
-                    className={`w-full py-2 rounded-xl text-xs font-medium transition-all cursor-pointer ${
-                      esActivo ? 'bg-zinc-700 text-white' : 'bg-zinc-800 hover:bg-zinc-700 text-gray-300'
-                    }`}
-                  >
-                    {esActivo ? 'Plan Actual' : 'Seleccionar Free'}
-                  </button>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      </div>
+      <strong>{value}</strong>
 
-      {/* SECCIÓN 2: DATOS DE LA CUENTA */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-        <div className="bg-zinc-950 border border-zinc-800 p-5 rounded-xl">
-          <h3 className="font-semibold text-base mb-2">👤 Detalles del Propietario</h3>
-          <p className="text-xs text-gray-400 mb-4">Identificador único de usuario en la base de datos de Supabase.</p>
-          <div className="bg-zinc-900 p-3 rounded-lg border border-zinc-800 font-mono text-xs text-rose-400 select-all">
-            {userId}
-          </div>
-        </div>
-        <div className="bg-zinc-950 border border-zinc-800 p-5 rounded-xl">
-          <h3 className="font-semibold text-base mb-2">💳 Estado de la Suscripción</h3>
-          <p className="text-xs text-gray-400 mb-4">Próxima renovación de factura y pasarela de pago.</p>
-          <div className="flex items-center justify-between">
-            <span className="text-sm text-emerald-400 font-medium flex items-center gap-1.5">
-              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span> Activa y Al Corriente
-            </span>
-            <span className="text-xs text-gray-400">Renueva el 01/10/2026</span>
-          </div>
-        </div>
-      </div>
-
-      {/* BOTÓN DE GUARDAR CAMBIOS */}
-      <div className="flex justify-end bg-zinc-950 border border-zinc-800 p-4 rounded-xl">
-        <button
-          onClick={guardarConfiguracion}
-          disabled={guardandoConfig}
-          className="px-6 py-2.5 bg-gradient-to-r from-rose-600 to-amber-600 hover:opacity-90 text-white font-medium rounded-xl transition-all shadow-lg shadow-rose-950/50 disabled:opacity-50 flex items-center gap-2 cursor-pointer"
-        >
-          {guardandoConfig ? 'Guardando...' : 'Guardar y Sincronizar Plan'}
-        </button>
-      </div>
-
-      {/* MODAL DE CONTACTO PARA PLAN CUSTOM */}
-      {modalCustomAbierto && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
-          <div className="bg-zinc-950 border border-zinc-800 rounded-2xl max-w-md w-full p-6 shadow-2xl relative">
-            <div className="flex justify-between items-center mb-4">
-              <h3 className="text-lg font-bold text-white flex items-center gap-2">
-                🏢 Solicitud Plan Custom (Enterprise)
-              </h3>
-              <button
-                onClick={() => setModalCustomAbierto(false)}
-                className="text-gray-400 hover:text-white text-sm font-bold px-2 py-1 bg-zinc-900 rounded-lg"
-              >
-                ✕
-              </button>
-            </div>
-            
-            <p className="text-xs text-gray-400 mb-5">
-              Cuéntanos sobre tu empresa y nos pondremos en contacto contigo en <b>contact@vortexaicom.com</b> a la brevedad.
-            </p>
-
-            <form
-  onSubmit={async (e) => {
-    e.preventDefault();
-    setEnviandoForm(true);
-
-    try {
-      const respuesta = await fetch("https://api.web3forms.com/submit", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Accept: "application/json",
-        },
-        body: JSON.stringify({
-          access_key: "eaa5287f-0790-4c84-9aea-ab3bdd0f9882", // 👈 Pega aquí la clave que te llegó al correo
-          subject: `Nuevo Lead Plan Custom - ${formNombre}`,
-          from_name: formNombre,
-          email: formEmail,
-          mensaje: formMensaje,
-          usuario_id: userId,
-        }),
-      });
-
-      const resultado = await respuesta.json();
-
-      if (resultado.success) {
-        alert("¡Mensaje enviado con éxito! Te hemos notificado correctamente.");
-        setModalCustomAbierto(false);
-        setFormNombre('');
-        setFormEmail('');
-        setFormMensaje('');
-      } else {
-        alert("Hubo un error al enviar el mensaje. Por favor, inténtalo de nuevo.");
-      }
-    } catch (error) {
-      alert("Error de red. Comprueba tu conexión a internet.");
-    } finally {
-      setEnviandoForm(false);
-    }
-  }}
-  className="space-y-4"
->
-  <div>
-    <label className="block text-xs font-medium text-gray-300 mb-1">Tu Nombre</label>
-    <input
-      type="text"
-      required
-      value={formNombre}
-      onChange={(e) => setFormNombre(e.target.value)}
-      placeholder="Ej. Carlos Pérez"
-      className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-rose-500"
-    />
-  </div>
-
-  <div>
-    <label className="block text-xs font-medium text-gray-300 mb-1">Correo Electrónico</label>
-    <input
-      type="email"
-      required
-      value={formEmail}
-      onChange={(e) => setFormEmail(e.target.value)}
-      placeholder="carlos@tuempresa.com"
-      className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-rose-500"
-    />
-  </div>
-
-  <div>
-    <label className="block text-xs font-medium text-gray-300 mb-1">Cuéntanos sobre tu empresa</label>
-    <textarea
-      required
-      rows={4}
-      value={formMensaje}
-      onChange={(e) => setFormMensaje(e.target.value)}
-      placeholder="Volumen de ventas, requerimientos de integración, ERP..."
-      className="w-full bg-zinc-900 border border-zinc-800 rounded-xl p-3 text-xs text-white focus:outline-none focus:border-rose-500 resize-none"
-    />
-  </div>
-
-  <div className="flex justify-end gap-3 pt-2">
-    <button
-      type="button"
-      onClick={() => setModalCustomAbierto(false)}
-      className="px-4 py-2 bg-zinc-900 hover:bg-zinc-800 text-gray-300 text-xs font-medium rounded-xl transition-all"
-    >
-      Cancelar
-    </button>
-    <button
-      type="submit"
-      disabled={enviandoForm}
-      className="px-5 py-2 bg-gradient-to-r from-rose-600 to-amber-600 hover:opacity-90 text-white text-xs font-medium rounded-xl transition-all shadow-md disabled:opacity-50 cursor-pointer"
-    >
-      {enviandoForm ? 'Enviando...' : 'Enviar Mensaje'}
-    </button>
-  </div>
-</form>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-})()}
-</>
-)}
-</main>
+      <small>{delta} vs periodo anterior</small>
+    </Card>
+  ))}
 </div>
-</div>
-);
+
+                  <div className="vx-two-col">
+                    <Card><div className="vx-card-head"><div><span className="vx-eyebrow">Actividad</span><h3>Temas consultados</h3></div><button className="vx-icon-btn" onClick={() => changeTab('analiticas')}><ArrowUpRight size={16} /></button></div>{topics.length ? <div className="vx-topic-list">{topics.slice(0,5).map((x,i) => <div className="vx-topic" key={x.name}><div><span>{String(i+1).padStart(2,'0')}</span><strong>{x.name}</strong></div><b>{formatNumber(x.count)}</b></div>)}</div> : <div className="vx-empty"><BarChart3 size={22}/><span>Aún no hay suficientes conversaciones para mostrar actividad.</span></div>}</Card>
+                    <Card><div className="vx-card-head"><div><span className="vx-eyebrow">Experiencia</span><h3>Preview en vivo</h3></div><span className="vx-live small"><i /> Preview</span></div><div className="vx-preview"><ChatWidget tiendaId={userId} modoPreview /></div></Card>
+                  </div>
+                </>
+              )}
+
+              {tab === 'catalogo' && (
+                <>
+                  <SectionTitle eyebrow="Knowledge base" title="Catálogo & conocimiento" description="Alimenta al asistente con productos, envíos, devoluciones y FAQs." />
+                  <div className="vx-import-grid">
+                    <Card><div className="vx-card-head"><div><span className="vx-eyebrow">CSV</span><h3>Importar catálogo</h3></div><Upload size={18}/></div><p className="vx-muted">Carga un CSV compatible con tu catálogo actual.</p><input className={inputClass} type="file" accept=".csv,text/csv" onChange={e => setCsv(e.target.files?.[0] || null)} /><button className="vx-btn primary full" disabled={csvLoading} onClick={uploadCsv}>{csvLoading ? 'Procesando…' : 'Importar CSV'} <Upload size={15}/></button></Card>
+                    <Card><div className="vx-card-head"><div><span className="vx-eyebrow">URL</span><h3>Importación automática</h3></div><Globe2 size={18}/></div><p className="vx-muted">Busca productos en Shopify, JSON-LD, enlaces y sitemaps.</p><input className={inputClass} placeholder="https://tu-tienda.com" value={url} onChange={e => setUrl(e.target.value)} /><button className="vx-btn primary full" disabled={urlLoading} onClick={importUrl}>{urlLoading ? 'Analizando tienda…' : 'Importar desde URL'} <ArrowUpRight size={15}/></button></Card>
+                  </div>
+                  <Card><div className="vx-card-head"><div><span className="vx-eyebrow">Knowledge</span><h3>{formatNumber(catalogCount)} productos indexados</h3></div><Boxes size={20}/></div><div className="vx-kb-grid"><label>Envíos<textarea className={inputClass} rows={5} value={config.tiempos_envio || ''} onChange={e => updateConfig('tiempos_envio', e.target.value)} placeholder="Plazos, costes, zonas…" /></label><label>Políticas<textarea className={inputClass} rows={5} value={config.politicas || ''} onChange={e => updateConfig('politicas', e.target.value)} placeholder="Devoluciones, cambios, garantías…" /></label><label>FAQs<textarea className={inputClass} rows={5} value={config.faqs || ''} onChange={e => updateConfig('faqs', e.target.value)} placeholder="Preguntas frecuentes…" /></label></div><div className="vx-save-row"><span>Los cambios de conocimiento se aplican al guardar.</span><button className="vx-btn primary" disabled={saving} onClick={save}>{saving ? 'Guardando…' : 'Guardar conocimiento'} <Check size={15}/></button></div></Card>
+                </>
+              )}
+
+              {tab === 'ia' && (
+                <>
+                  <SectionTitle eyebrow="AI engine" title="Funciones IA" description="Activa capacidades comerciales según el plan de tu cuenta." />
+                  <div className="vx-feature-grid">{features.map(feature => <Card key={feature.key}><Toggle feature={feature} /></Card>)}</div>
+                  <Card className="vx-save-banner"><div><span className="vx-eyebrow">Aplicar cambios</span><h3>Las funciones se guardan en la configuración de tu tienda.</h3></div><button className="vx-btn primary" disabled={saving} onClick={save}>{saving ? 'Guardando…' : 'Guardar funciones'} <Check size={15}/></button></Card>
+                </>
+              )}
+
+              {tab === 'personalizacion' && (
+                <>
+                  <SectionTitle eyebrow="Brand system" title="Personalización avanzada" description="Haz que el asistente parezca una parte nativa de la marca." />
+                  {planLocked('growth') ? <Card className="vx-locked-panel"><Lock size={24}/><h3>Disponible desde Growth</h3><p>La personalización avanzada se desbloquea en Growth, Pro y Custom.</p><button className="vx-btn primary" onClick={() => changeTab('planes')}>Ver planes <ArrowUpRight size={15}/></button></Card> :
+                    <div className="vx-settings-grid"><Card><span className="vx-eyebrow">Identidad</span><h3>Cómo se presenta la IA</h3><label>Nombre del asistente<input className={inputClass} value={config.nombre_asistente || ''} onChange={e => updateConfig('nombre_asistente', e.target.value)} /></label><label>Mensaje de bienvenida<textarea className={inputClass} rows={4} value={config.mensaje_bienvenida || ''} onChange={e => updateConfig('mensaje_bienvenida', e.target.value)} /></label><label>Posición<div className="vx-segment"><button className={config.posicion === 'izquierda' ? 'active' : ''} onClick={() => updateConfig('posicion','izquierda')}>Izquierda</button><button className={config.posicion !== 'izquierda' ? 'active' : ''} onClick={() => updateConfig('posicion','derecha')}>Derecha</button></div></label></Card><Card><span className="vx-eyebrow">Visual</span><h3>Marca del widget</h3><label>Color principal<div className="vx-color-row"><input type="color" value={config.color_primario || '#ff5b6e'} onChange={e => updateConfig('color_primario', e.target.value)} /><input className={inputClass} value={config.color_primario || '#ff5b6e'} onChange={e => updateConfig('color_primario', e.target.value)} /></div></label><label>Avatar<select className={inputClass} value={config.avatar_url || 'moderno'} onChange={e => updateConfig('avatar_url', e.target.value)}><option value="moderno">Robot moderno</option><option value="sparkle">✨ Chispa IA</option><option value="tienda">🛍️ Tienda</option></select></label><div className="vx-mini-preview"><ChatWidget tiendaId={userId} modoPreview /></div></Card><div className="vx-save-row span-2"><span>La preview usa la configuración real de tu tienda.</span><button className="vx-btn primary" disabled={saving} onClick={save}>{saving ? 'Guardando…' : 'Guardar y aplicar'} <Check size={15}/></button></div></div>}
+                </>
+              )}
+
+              {tab === 'flujos' && (
+                <>
+                  <SectionTitle eyebrow="Human handover" title="Flujos híbridos" description="Define cuándo la IA debe dejar paso a una persona." />
+                  <div className="vx-settings-grid"><Card><span className="vx-eyebrow">Fallback</span><h3>Acción cuando no hay respuesta</h3><label>Derivar a<select className={inputClass} value={config.accion_fallback || 'formulario'} onChange={e => updateConfig('accion_fallback', e.target.value)}><option value="formulario">Formulario</option><option value="whatsapp">WhatsApp</option><option value="email">Email</option></select></label>{config.accion_fallback === 'whatsapp' && <label>WhatsApp<input className={inputClass} value={config.whatsapp_soporte || ''} onChange={e => updateConfig('whatsapp_soporte', e.target.value)} placeholder="+34600000000" /></label>}<label>Mensaje de fallback<textarea className={inputClass} rows={5} value={config.mensaje_fallback || ''} onChange={e => updateConfig('mensaje_fallback', e.target.value)} /></label></Card><Card><span className="vx-eyebrow">Frustration guard</span><h3>Umbral de derivación</h3><label>Intentos fallidos<select className={inputClass} value={String(config.umbral_frustracion || 2)} onChange={e => updateConfig('umbral_frustracion', Number(e.target.value))}><option value="1">1 intento</option><option value="2">2 intentos</option><option value="3">3 intentos</option></select></label><div className="vx-callout"><ShieldCheck size={17}/><p>Un fallback claro evita que una conversación se quede atrapada en un bucle.</p></div></Card><div className="vx-save-row span-2"><span>Los flujos se aplican al motor de conversación.</span><button className="vx-btn primary" disabled={saving} onClick={save}>{saving ? 'Guardando…' : 'Guardar flujos'} <Check size={15}/></button></div></div>
+                </>
+              )}
+
+              {tab === 'analiticas' && (
+                <>
+                  <SectionTitle eyebrow="Analytics" title="Analíticas de rendimiento" description="Datos calculados a partir de las interacciones reales registradas por VortexAI." />
+                  <div className="vx-range"><button className={range === '24h' ? 'active' : ''} onClick={() => setRange('24h')}>24h</button><button className={range === '7d' ? 'active' : ''} onClick={() => setRange('7d')}>7 días</button><button className={range === '30d' ? 'active' : ''} onClick={() => setRange('30d')}>30 días</button></div>
+                  <div className="vx-metric-grid">
+                    <Card className="vx-metric"><span>Conversaciones</span><strong>{formatNumber(metrics.totalChats)}</strong><small>{metricDelta(metrics.totalChats, previousMetrics.totalChats)} vs anterior</small></Card>
+                    <Card className="vx-metric"><span>Mensajes</span><strong>{formatNumber(metrics.mensajes)}</strong><small>{metricDelta(metrics.mensajes, previousMetrics.mensajes)} vs anterior</small></Card>
+                    <Card className="vx-metric"><span>Visitantes</span><strong>{formatNumber(metrics.visitantes)}</strong><small>{metricDelta(metrics.visitantes, previousMetrics.visitantes)} vs anterior</small></Card>
+                    <Card className="vx-metric"><span>Resolución</span><strong>{metrics.tasaResolucion}%</strong><small>{formatNumber(metrics.resueltas)} resueltas · {formatNumber(metrics.noResueltas)} sin resolver</small></Card>
+                  </div>
+                  <div className="vx-two-col"><Card><div className="vx-card-head"><div><span className="vx-eyebrow">Topics</span><h3>Qué preguntan tus clientes</h3></div></div>{topics.length ? <div className="vx-topic-list">{topics.map((x,i) => <div className="vx-topic" key={x.name}><div><span>{String(i+1).padStart(2,'0')}</span><strong>{x.name}</strong></div><b>{formatNumber(x.count)}</b></div>)}</div> : <div className="vx-empty"><BarChart3 size={22}/><span>Sin datos todavía.</span></div>}</Card><Card><div className="vx-card-head"><div><span className="vx-eyebrow">Export</span><h3>Exportar conversaciones</h3></div><FileText size={18}/></div><p className="vx-muted">Genera un CSV con las interacciones reales de tu cuenta.</p><button className="vx-btn primary full" onClick={async () => { const { data } = await supabase.from('interacciones_chat').select('created_at,conversation_id,visitor_id,remitente,texto,resuelta').eq('user_id', userId).order('created_at',{ascending:false}).limit(5000); if (!data?.length) return setNotice('No hay datos suficientes para exportar.'); const header='Fecha,Conversacion,Visitante,Remitente,Resuelta,Mensaje\\n'; const body=data.map(r=>[new Date(r.created_at).toISOString(),r.conversation_id||'',r.visitor_id||'',r.remitente||'',String(r.resuelta ?? ''),`"${String(r.texto||'').replace(/"/g,'""')}"`].join(',')).join('\\n'); const blob=new Blob([header+body],{type:'text/csv;charset=utf-8'}); const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=`vortexai-${new Date().toISOString().slice(0,10)}.csv`;a.click();URL.revokeObjectURL(a.href) }}>Descargar CSV <DownloadIcon /></button></Card></div>
+                </>
+              )}
+
+              {tab === 'conversaciones' && (
+                <>
+                  <SectionTitle eyebrow="Live conversations" title="Conversaciones" description="Historial real de interacciones procesadas por tu asistente." />
+                  <Card><div className="vx-toolbar"><div className="vx-search"><Search size={15}/><input placeholder="Buscar mensaje o visitante…" value={logSearch} onChange={e => setLogSearch(e.target.value)} /></div><button className="vx-btn ghost" onClick={loadLogs}><RefreshCw size={15}/> Actualizar</button></div>{logLoading ? <div className="vx-empty">Cargando conversaciones…</div> : filteredLogs.length ? <div className="vx-table-wrap"><table className="vx-table"><thead><tr><th>Fecha</th><th>Remitente</th><th>Conversación</th><th>Mensaje</th><th>Estado</th></tr></thead><tbody>{filteredLogs.map((row,i)=><tr key={row.id || i}><td>{new Date(row.created_at).toLocaleString('es-ES')}</td><td><span className={`vx-badge ${row.remitente === 'ai' ? 'ai' : 'user'}`}>{row.remitente}</span></td><td className="mono">{row.conversation_id ? String(row.conversation_id).slice(0,8) : '—'}</td><td className="message-cell">{row.texto}</td><td>{row.resuelta === true ? <span className="vx-resolved">Resuelta</span> : <span className="vx-unresolved">Pendiente</span>}</td></tr>)}</tbody></table></div> : <div className="vx-empty"><MessageSquare size={22}/><span>No hay conversaciones registradas todavía.</span></div>}</Card>
+                </>
+              )}
+
+              {tab === 'widget' && (
+                <>
+                  <SectionTitle eyebrow="Deployment" title="Widget & instalación" description="Conecta el asistente a cualquier ecommerce mediante una integración universal." />
+                  {planLocked('starter') ? <Card className="vx-locked-panel"><Lock size={24}/><h3>Widget bloqueado en Free</h3><p>El widget de producción está disponible desde Starter.</p><button className="vx-btn primary" onClick={() => changeTab('planes')}>Actualizar plan <ArrowUpRight size={15}/></button></Card> :
+                    <><Card><div className="vx-card-head"><div><span className="vx-eyebrow">Universal embed</span><h3>Tu código de instalación</h3></div><Code2 size={20}/></div><p className="vx-muted">Pega esta línea antes de &lt;/body&gt; en tu ecommerce.</p><div className="vx-code"><code>{widgetCode}</code><button onClick={copyWidget}>{widgetCopied ? <Check size={17}/> : <Copy size={17}/>}<span>{widgetCopied ? 'Copiado' : 'Copiar'}</span></button></div></Card><div className="vx-install-grid"><Card><Globe2 size={19}/><h3>Shopify</h3><p>Temas → Editar código → theme.liquid → antes de &lt;/body&gt;.</p></Card><Card><Database size={19}/><h3>WooCommerce</h3><p>Usa el footer de tu tema o un plugin de inserción de scripts.</p></Card><Card><Code2 size={19}/><h3>Custom</h3><p>Compatible con HTML, React, Next.js, Vue y otras aplicaciones web.</p></Card></div></>}
+                </>
+              )}
+
+              {tab === 'planes' && (
+                <>
+                  <SectionTitle eyebrow="Account" title="Planes" description="Elige el nivel de automatización que necesitas." />
+                  <div className="vx-plans">{[
+                    ['free','Free','0','Prueba y configuración'],
+                    ['starter','Starter','49','Widget + soporte'],
+                    ['growth','Growth','99','IA comercial avanzada'],
+                    ['pro','Pro','249','Automatización completa'],
+                    ['custom','Custom','A medida','Enterprise'],
+                  ].map(([id,name,price,desc]) => <Card key={id} className={`vx-plan-card ${currentPlan === id ? 'selected' : ''}`}><span className="vx-eyebrow">{name}</span><strong>{price === '0' ? '€0' : price === 'A medida' ? 'A medida' : `€${price}`}<small>{price !== 'A medida' && '/mes'}</small></strong><p>{desc}</p>{currentPlan === id ? <span className="vx-current-plan"><Check size={13}/> Plan actual</span> : id === 'custom' ? <button className="vx-btn ghost full" onClick={() => setCustomOpen(true)}>Contactar</button> : <a className="vx-btn primary full" href="/login">Elegir {name}</a>}</Card>)}</div>
+                  <Card className="vx-plan-note"><ShieldCheck size={17}/><p>Los planes mostrados aquí siguen la estructura actual de VortexAI: Free 0 €, Starter 49 €, Growth 99 € y Pro 249 € al mes.</p></Card>
+                </>
+              )}
+
+              {tab === 'ajustes' && (
+                <>
+                  <SectionTitle eyebrow="Settings" title="Ajustes de cuenta" description="Información de tu workspace y configuración operativa." />
+                  <div className="vx-settings-grid"><Card><span className="vx-eyebrow">Workspace</span><h3>Identidad</h3><label>Nombre de tienda<input className={inputClass} value={config.nombre_tienda || ''} onChange={e => updateConfig('nombre_tienda', e.target.value)} placeholder="Mi tienda" /></label><label>Plan actual<div className="vx-readonly">{currentPlan}</div></label><label>User ID<div className="vx-readonly mono">{userId}</div></label></Card><Card><span className="vx-eyebrow">Seguridad</span><h3>Estado</h3><div className="vx-security"><ShieldCheck size={20}/><div><strong>Conexión Supabase activa</strong><span>La cuenta se identifica mediante la sesión autenticada.</span></div></div><div className="vx-security"><Lock size={20}/><div><strong>Configuración protegida</strong><span>Los secretos del backend no se exponen en este panel.</span></div></div></Card><div className="vx-save-row span-2"><span>El nombre de tienda se mantiene local a tu configuración actual.</span><button className="vx-btn primary" onClick={save} disabled={saving}>{saving ? 'Guardando…' : 'Guardar ajustes'} <Check size={15}/></button></div></div>
+                </>
+              )}
+            </>
+          )}
+        </main>
+      </div>
+
+      {customOpen && <div className="vx-modal-backdrop" onMouseDown={() => setCustomOpen(false)}><div className="vx-modal" onMouseDown={e => e.stopPropagation()}><button onClick={() => setCustomOpen(false)} className="vx-modal-close"><X size={18}/></button><span className="vx-eyebrow">CUSTOM / ENTERPRISE</span><h2>Hablemos de tu caso.</h2><p>Se preparará un correo para <strong>contact@vortexaicom.com</strong>.</p><form onSubmit={e => { e.preventDefault(); const subject=encodeURIComponent(`VortexAI Custom — ${custom.name}`); const body=encodeURIComponent(`Nombre: ${custom.name}\nEmail: ${custom.email}\n\n${custom.message}`); window.location.href=`mailto:contact@vortexaicom.com?subject=${subject}&body=${body}`; setCustomOpen(false) }}><input className={inputClass} required placeholder="Nombre" value={custom.name} onChange={e => setCustom({...custom,name:e.target.value})}/><input className={inputClass} required type="email" placeholder="Email" value={custom.email} onChange={e => setCustom({...custom,email:e.target.value})}/><textarea className={inputClass} required rows={5} placeholder="Necesidades, volumen, integraciones…" value={custom.message} onChange={e => setCustom({...custom,message:e.target.value})}/><button className="vx-btn primary full">Preparar solicitud <ArrowUpRight size={15}/></button></form></div></div>}
+    </div>
+  )
 }
+
+function DownloadIcon() { return <Clipboard size={15} /> }

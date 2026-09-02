@@ -33,25 +33,6 @@ const visitorId =
   body.visitorId ||
   body.visitor_id
 
-    // Identificador estable de la conversación.
-    // El widget lo conserva durante la sesión y lo reenvía
-    // en cada mensaje. Si algún cliente no lo proporciona,
-    // generamos uno nuevo para no perder la interacción.
-    const conversationId =
-      typeof body.conversationId === 'string' &&
-      body.conversationId.trim()
-        ? body.conversationId.trim()
-        : crypto.randomUUID()
-
-const fallbackIntentosCliente =
-  Math.max(
-    0,
-    Math.min(
-      20,
-      Number(body.fallbackIntentos || 0)
-    )
-  )
-
 const inicioWidget =
   body.inicioWidget === true
 
@@ -85,26 +66,19 @@ if ((!mensaje && !inicioWidget) || !tiendaId) {
     } = await supabase
       .from('tiendas')
       .select(`
-  nombre_tienda,
-  productos_json,
-  tiempos_envio,
-  politicas,
-  faqs,
-
-  accion_fallback,
-  whatsapp_soporte,
-  email_soporte,
-  umbral_frustracion,
-  mensaje_fallback,
-
-  detector_idioma,
-  exit_intent,
-  cross_selling,
-  modo_persuasivo,
-  carrito_abandonado,
-  analisis_sentimiento,
-  cupones_flash
-`)
+        nombre_tienda,
+        productos_json,
+        tiempos_envio,
+        politicas,
+        faqs,
+        detector_idioma,
+        exit_intent,
+        cross_selling,
+        modo_persuasivo,
+        carrito_abandonado,
+        analisis_sentimiento,
+        cupones_flash
+      `)
       .eq('user_id', tiendaId)
       .single()
 
@@ -457,30 +431,6 @@ IMPORTANTE:
     }
 
     // ============================================================
-    // CONFIGURACIÓN DE REGLAS DE ESCAPE
-    // ============================================================
-
-    const umbralFrustracion =
-      Math.max(
-        1,
-        Math.min(
-          3,
-          Number(tienda.umbral_frustracion || 2)
-        )
-      )
-
-    const accionFallback =
-      ['formulario', 'whatsapp', 'email'].includes(
-        tienda.accion_fallback
-      )
-        ? tienda.accion_fallback
-        : 'formulario'
-
-    const mensajeFallback =
-      tienda.mensaje_fallback ||
-      'Vaya, parece que no tengo esa información exacta. Déjanos tus datos y un especialista humano te contactará de inmediato.'
-
-    // ============================================================
     // LLAMADA A ANTHROPIC
     // ============================================================
 
@@ -503,12 +453,6 @@ POLÍTICAS Y FAQS DE LA TIENDA:
 ${politicasTexto}
 
 Si no tienes la información necesaria, dilo con sinceridad y no te la inventes.
-
-REGLA DE DETECCIÓN DE INFORMACIÓN NO ENCONTRADA:
-Si la información necesaria NO aparece en el catálogo, políticas o FAQs, comienza tu respuesta exactamente con:
-[VORTEXAI_NO_ENCONTRADO]
-Después del marcador, explica brevemente que no tienes esa información.
-Si sí existe información suficiente, NO uses ese marcador.
 
 Cuando el cliente pregunte por envíos, plazos, costes de envío, devoluciones, cambios o una FAQ, utiliza la información correspondiente de POLÍTICAS Y FAQS DE LA TIENDA. No respondas que no tienes acceso a esa información si sí aparece ahí.
 
@@ -555,199 +499,11 @@ Nunca inventes información que no aparezca en los datos proporcionados.
     const primerBloque =
       respuesta.content[0]
 
-    let textoRespuesta =
+    const textoRespuesta =
       primerBloque &&
       primerBloque.type === 'text'
         ? primerBloque.text
         : ''
-
-    const contieneNoEncontrado =
-      textoRespuesta.includes(
-        '[VORTEXAI_NO_ENCONTRADO]'
-      )
-
-    const contieneFrustracion =
-      textoRespuesta.includes(
-        '[VORTEXAI_FRUSTRACION]'
-      )
-
-    const textoLimpio =
-      textoRespuesta
-        .replace(
-          '[VORTEXAI_NO_ENCONTRADO]',
-          ''
-        )
-        .replace(
-          '[VORTEXAI_FRUSTRACION]',
-          ''
-        )
-        .trim()
-
-    const textoLower =
-      textoLimpio.toLowerCase()
-
-    // Detección secundaria por si el modelo no devuelve el marcador.
-    const deteccionSecundaria =
-      textoLower.includes(
-        'no tengo esa información'
-      ) ||
-      textoLower.includes(
-        'no tengo informacion'
-      ) ||
-      textoLower.includes(
-        'no dispongo de esa información'
-      ) ||
-      textoLower.includes(
-        'no puedo proporcionar esa información'
-      ) ||
-      textoLower.includes(
-        'no está disponible en'
-      ) ||
-      textoLower.includes(
-        'no esta disponible en'
-      )
-
-    const respuestaNoEncontrada =
-      contieneNoEncontrado ||
-      deteccionSecundaria
-
-    const intentosFallback =
-      respuestaNoEncontrada
-        ? fallbackIntentosCliente + 1
-        : 0
-
-    const debeDerivar =
-      !inicioWidget &&
-      (
-        intentosFallback >=
-          umbralFrustracion ||
-        (
-          tienda.analisis_sentimiento === true &&
-          contieneFrustracion
-        )
-      )
-
-    let respuestaFinal =
-      textoLimpio
-
-    let handover = false
-
-    let handoverAction:
-      | 'formulario'
-      | 'whatsapp'
-      | 'email'
-      | null = null
-
-    let whatsappUrl:
-      string | null = null
-
-    let emailUrl:
-      string | null = null
-
-    if (debeDerivar) {
-
-      handover = true
-      handoverAction =
-        accionFallback
-
-      respuestaFinal =
-        mensajeFallback
-
-      if (
-        accionFallback ===
-        'whatsapp'
-      ) {
-
-        const numero =
-          String(
-            tienda.whatsapp_soporte ||
-            ''
-          ).replace(
-            /[^0-9]/g,
-            ''
-          )
-
-        if (numero) {
-          whatsappUrl =
-            `https://wa.me/${numero}?text=${encodeURIComponent(
-              'Hola, necesito ayuda con mi consulta.'
-            )}`
-        }
-      }
-
-      if (
-        accionFallback ===
-        'email'
-      ) {
-
-        const email =
-          String(
-            tienda.email_soporte ||
-            ''
-          ).trim()
-
-        if (email) {
-          emailUrl =
-            `mailto:${email}?subject=${encodeURIComponent(
-              'Solicitud de ayuda desde la tienda'
-            )}&body=${encodeURIComponent(
-              'Hola, necesito ayuda con mi consulta.'
-            )}`
-        }
-      }
-
-    } else if (
-      respuestaNoEncontrada
-    ) {
-
-      respuestaFinal =
-        textoLimpio ||
-        'No encuentro esa información en la base de conocimiento de la tienda.'
-    }
-
-    // ============================================================
-    // ANALÍTICAS REALES
-    // ============================================================
-    // Una respuesta se considera resuelta cuando el asistente
-    // ha podido responder sin activar el fallback ni derivar
-    // al equipo humano. Guardamos el estado junto a cada mensaje
-    // para que el dashboard pueda reconstruir la conversación real.
-    const resuelta =
-      !respuestaNoEncontrada &&
-      !handover
-
-    // Las comprobaciones automáticas al entrar al widget no son
-    // conversaciones de cliente y no deben contaminar las métricas.
-    if (!inicioWidget && mensaje.trim()) {
-      const { error: errorInteraccion } =
-        await supabase
-          .from('interacciones_chat')
-          .insert([
-            {
-              user_id: String(tiendaId),
-              conversation_id: conversationId,
-              visitor_id: visitorId || null,
-              remitente: 'user',
-              texto: mensaje,
-              resuelta,
-            },
-            {
-              user_id: String(tiendaId),
-              conversation_id: conversationId,
-              visitor_id: visitorId || null,
-              remitente: 'ai',
-              texto: respuestaFinal,
-              resuelta,
-            },
-          ])
-
-      if (errorInteraccion) {
-        console.error(
-          'VortexAI: error guardando interacción para analíticas:',
-          errorInteraccion
-        )
-      }
-    }
 
     // ============================================================
     // RESPUESTA
@@ -755,19 +511,7 @@ Nunca inventes información que no aparezca en los datos proporcionados.
 
     return NextResponse.json(
   {
-    respuesta: respuestaFinal,
-    conversationId,
-    resuelta,
-    fallbackDetectado: respuestaNoEncontrada,
-    fallbackIntentos: intentosFallback,
-    handover,
-    handoverAction,
-    whatsappUrl,
-    emailUrl,
-    mensajeFallback:
-      handover
-        ? mensajeFallback
-        : null,
+    respuesta: textoRespuesta,
     carritoAbandonado:
       carrito?.estado === 'abandoned' &&
       Array.isArray(carrito.items) &&

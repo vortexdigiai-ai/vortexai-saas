@@ -62,40 +62,6 @@ export async function POST(req: Request) {
           ? body.faqs
           : '',
 
-      // FLUJOS HÍBRIDOS Y REGLAS DE ESCAPE
-      accion_fallback:
-        typeof body.accion_fallback === 'string' &&
-        ['formulario', 'whatsapp', 'email'].includes(body.accion_fallback)
-          ? body.accion_fallback
-          : 'formulario',
-
-      whatsapp_soporte:
-        typeof body.whatsapp_soporte === 'string'
-          ? body.whatsapp_soporte.trim()
-          : '',
-
-      email_soporte:
-        typeof body.email_soporte === 'string'
-          ? body.email_soporte.trim()
-          : '',
-
-      umbral_frustracion:
-        Number.isFinite(Number(body.umbral_frustracion))
-          ? Math.min(
-              3,
-              Math.max(
-                1,
-                Number(body.umbral_frustracion)
-              )
-            )
-          : 2,
-
-      mensaje_fallback:
-        typeof body.mensaje_fallback === 'string' &&
-        body.mensaje_fallback.trim()
-          ? body.mensaje_fallback.trim()
-          : 'Vaya, parece que no tengo esa información exacta. Déjanos tus datos y un especialista humano te contactará de inmediato.',
-
       // FUNCIONES IA
       detector_idioma:
         typeof body.detector_idioma === 'boolean'

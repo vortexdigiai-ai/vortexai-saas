@@ -1,464 +1,370 @@
 'use client'
 
-import { useState } from 'react'
-import Link from 'next/link'
-import { Upload, Sparkles, Code2, MessageCircle, Zap, ShieldCheck, Check, Menu, X, ArrowRight, ChevronRight, Terminal } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
+import {
+  ArrowRight,
+  BarChart3,
+  Bot,
+  Check,
+  ChevronDown,
+  ChevronRight,
+  CircleDollarSign,
+  MessageSquare,
+  MousePointerClick,
+  PackageSearch,
+  Play,
+  ShieldCheck,
+  Sparkles,
+  Store,
+  Zap,
+} from 'lucide-react'
 
-const NAV_LINKS = [
-  { href: '#como-funciona', label: 'Cómo funciona' },
-  { href: '#producto', label: 'Producto' },
-  { href: '#planes', label: 'Planes' },
-  { href: '#nosotros', label: 'Nosotros' },
+const plans = [
+  {
+    name: 'Free',
+    price: '0',
+    description: 'Para probar VortexAI antes de ponerlo en producción.',
+    features: ['Configuración de la IA', 'Base de conocimiento', 'Pruebas del asistente', 'Sin widget en producción'],
+  },
+  {
+    name: 'Starter',
+    price: '49',
+    description: 'El punto de entrada para tiendas que quieren automatizar soporte.',
+    features: ['Widget en producción', 'Hasta 1.000 chats/mes', 'Detector de idioma', 'Exit Intent', 'Soporte estándar'],
+  },
+  {
+    name: 'Growth',
+    price: '99',
+    description: 'Automatización comercial para crecer con cada conversación.',
+    popular: true,
+    features: ['Hasta 5.000 chats/mes', 'Todas las funciones IA', 'Personalización avanzada', 'Carritos abandonados', 'Analíticas avanzadas'],
+  },
+  {
+    name: 'Pro',
+    price: '249',
+    description: 'Para marcas con mayor volumen y necesidades de conversión.',
+    features: ['Chats ilimitados', 'Automatización avanzada', 'Analíticas completas', 'Soporte prioritario', 'Máxima personalización'],
+  },
+]
+
+const faqs = [
+  ['¿Necesito saber programar?', 'No. Configuras la base de conocimiento desde VortexAI y después instalas una sola línea de código en tu tienda.'],
+  ['¿Con qué tiendas funciona?', 'El widget es una integración web universal. El importador de catálogo puede trabajar con Shopify y otras tiendas que expongan productos mediante JSON-LD, enlaces o sitemaps.'],
+  ['¿La IA inventa respuestas?', 'El motor está configurado para responder utilizando la información disponible de la tienda y activar un fallback cuando no puede resolver una consulta.'],
+  ['¿Puedo personalizar el chatbot?', 'Sí. Puedes cambiar identidad, color, avatar, posición, bienvenida y funciones comerciales según el plan.'],
+  ['¿Qué pasa si un cliente necesita una persona?', 'Los flujos híbridos permiten derivar la conversación a formulario, WhatsApp o email cuando se alcanza el umbral configurado.'],
 ]
 
 export default function LandingPage() {
-  const [menuAbierto, setMenuAbierto] = useState(false)
-  const [enviado, setEnviado] = useState(false)
+  const [openFaq, setOpenFaq] = useState<number | null>(null)
+  const [scrolled, setScrolled] = useState(false)
+  const [customOpen, setCustomOpen] = useState(false)
+  const [customSent, setCustomSent] = useState(false)
+  const [custom, setCustom] = useState({ name: '', email: '', message: '' })
+  const revealRef = useRef<HTMLElement[]>([])
 
-  function enviarContacto(e: React.FormEvent) {
+  useEffect(() => {
+    const onScroll = () => setScrolled(window.scrollY > 24)
+    window.addEventListener('scroll', onScroll, { passive: true })
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting) entry.target.classList.add('is-visible')
+        })
+      },
+      { threshold: 0.12, rootMargin: '0px 0px -60px 0px' },
+    )
+
+    revealRef.current.forEach((el) => el && observer.observe(el))
+
+    return () => {
+      window.removeEventListener('scroll', onScroll)
+      observer.disconnect()
+    }
+  }, [])
+
+  const reveal = (el: HTMLElement | null) => {
+    if (el && !revealRef.current.includes(el)) revealRef.current.push(el)
+  }
+
+  const submitCustom = (e: React.FormEvent) => {
     e.preventDefault()
-    setEnviado(true)
+    const subject = encodeURIComponent(`VortexAI Custom — ${custom.name}`)
+    const body = encodeURIComponent(
+      `Nombre: ${custom.name}\nEmail: ${custom.email}\n\nEmpresa / necesidades:\n${custom.message}`,
+    )
+    window.location.href = `mailto:contact@vortexaicom.com?subject=${subject}&body=${body}`
+    setCustomSent(true)
   }
 
   return (
-    <div className="min-h-screen bg-[#0A0B0E] text-slate-100 selection:bg-rose-500/30 selection:text-rose-200 font-sans antialiased overflow-x-hidden">
-      
-      {/* Background ambient lighting effects */}
-      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full max-w-7xl h-[500px] bg-gradient-to-b from-rose-500/10 via-purple-500/5 to-transparent blur-3xl pointer-events-none -z-10" />
+    <main className="landing-page">
+      <nav className={`landing-nav ${scrolled ? 'landing-nav-scrolled' : ''}`}>
+        <a href="#top" className="brand">
+          <span className="brand-mark"><Sparkles size={16} /></span>
+          Vortex<span>AI</span>
+        </a>
+        <div className="nav-links">
+          <a href="#producto">Producto</a>
+          <a href="#como-funciona">Cómo funciona</a>
+          <a href="#precios">Precios</a>
+          <a href="#faq">FAQ</a>
+        </div>
+        <div className="nav-actions">
+          <a href="/login" className="nav-login">Iniciar sesión</a>
+          <a href="/login" className="nav-cta">Empezar gratis <ArrowRight size={15} /></a>
+        </div>
+      </nav>
 
-      {/* HEADER */}
-      <header className="sticky top-0 z-50 bg-[#0A0B0E]/80 backdrop-blur-xl border-b border-white/[0.08]">
-        <div className="max-w-7xl mx-auto px-6 h-20 flex items-center justify-between">
-          <Link href="/" className="flex items-center gap-2 group">
-            <div className="w-8 h-8 rounded-lg bg-gradient-to-tr from-rose-500 to-orange-400 flex items-center justify-center shadow-lg shadow-rose-500/20 group-hover:scale-105 transition-transform">
-              <Sparkles size={16} className="text-white" />
-            </div>
-            <span className="font-display text-xl font-bold tracking-tight text-white">
-              Vortex<span className="text-rose-500">AI</span>
-            </span>
-          </Link>
-
-          <nav className="hidden md:flex items-center gap-8 text-sm font-medium text-slate-400">
-            {NAV_LINKS.map((l) => (
-              <a key={l.href} href={l.href} className="hover:text-white transition-colors">{l.label}</a>
-            ))}
-          </nav>
-
-          <div className="hidden md:flex items-center gap-5">
-            <Link href="/login" className="text-sm font-medium text-slate-400 hover:text-white transition-colors">
-              Ya tengo cuenta
-            </Link>
-            <Link 
-              href="/registro" 
-              className="relative group overflow-hidden rounded-full p-[1px] focus:outline-none"
-            >
-              <span className="absolute inset-0 bg-gradient-to-r from-rose-500 to-orange-500 rounded-full transition-all duration-300 group-hover:opacity-90" />
-              <span className="relative px-5 py-2.5 rounded-full bg-[#0A0B0E] text-white text-sm font-medium flex items-center gap-2 transition-all duration-300 group-hover:bg-transparent">
-                Empezar gratis
-                <ArrowRight size={14} className="group-hover:translate-x-0.5 transition-transform" />
-              </span>
-            </Link>
+      <section id="top" className="hero-section">
+        <div className="hero-noise" />
+        <div className="hero-grid" />
+        <div className="hero-orb hero-orb-one" />
+        <div className="hero-orb hero-orb-two" />
+        <div className="hero-content">
+          <div className="eyebrow reveal" ref={reveal}>AI SALES INFRASTRUCTURE · BUILT FOR ECOMMERCE</div>
+          <h1 className="hero-title reveal reveal-delay-1" ref={reveal}>
+            Convierte cada
+            <span> conversación </span>
+            en una oportunidad.
+          </h1>
+          <p className="hero-copy reveal reveal-delay-2" ref={reveal}>
+            VortexAI crea asistentes de IA que conocen tu catálogo, resuelven dudas,
+            recuperan carritos y ayudan a vender. Sin montar un equipo de soporte.
+          </p>
+          <div className="hero-actions reveal reveal-delay-3" ref={reveal}>
+            <a href="/login" className="button button-primary">Crear mi asistente <ArrowRight size={17} /></a>
+            <a href="#producto" className="button button-ghost"><Play size={15} /> Ver cómo funciona</a>
           </div>
-
-          <button className="md:hidden text-slate-300 p-2" onClick={() => setMenuAbierto(!menuAbierto)} aria-label="Abrir menú">
-            {menuAbierto ? <X size={24} /> : <Menu size={24} />}
-          </button>
+          <div className="hero-trust reveal reveal-delay-4" ref={reveal}>
+            <span><ShieldCheck size={15} /> Instalación en minutos</span>
+            <span><Zap size={15} /> Sin cambiar tu tienda</span>
+            <span><BarChart3 size={15} /> Métricas reales</span>
+          </div>
         </div>
 
-        {menuAbierto && (
-          <div className="md:hidden border-t border-white/[0.08] px-6 py-6 flex flex-col gap-5 bg-[#0A0B0E] animate-in slide-in-from-top duration-200">
-            {NAV_LINKS.map((l) => (
-              <a key={l.href} href={l.href} onClick={() => setMenuAbierto(false)} className="text-base text-slate-300 hover:text-white">
-                {l.label}
-              </a>
-            ))}
-            <div className="pt-4 border-t border-white/[0.08] flex flex-col gap-3">
-              <Link href="/login" className="text-sm text-slate-400 text-center py-2">Ya tengo cuenta</Link>
-              <Link href="/registro" className="w-full py-3 rounded-full bg-gradient-to-r from-rose-500 to-orange-500 text-white font-medium text-center shadow-lg shadow-rose-500/20">
-                Empezar gratis
-              </Link>
+        <div className="hero-dashboard reveal reveal-delay-2" ref={reveal}>
+          <div className="hero-dashboard-glow" />
+          <div className="mock-window">
+            <div className="mock-topbar">
+              <div className="mock-dots"><i /><i /><i /></div>
+              <span>vortexai · dashboard</span>
+              <span className="mock-live"><b /> LIVE</span>
             </div>
-          </div>
-        )}
-      </header>
-
-      {/* HERO SECTION */}
-      <section className="relative pt-16 md:pt-28 pb-20">
-        <VortexGraphic />
-        
-        <div className="max-w-7xl mx-auto px-6 grid md:grid-cols-12 gap-12 items-center relative z-10">
-          
-          <div className="md:col-span-7 text-center md:text-left">
-            <div className="inline-flex items-center gap-2 text-xs font-mono uppercase tracking-wider text-rose-400 bg-rose-500/10 border border-rose-500/20 rounded-full px-3.5 py-1.5 mb-8 backdrop-blur-md">
-              <span className="w-2 h-2 rounded-full bg-rose-500 animate-pulse" />
-              Asistentes de IA para E-commerce
-            </div>
-            
-            <h1 className="text-4xl sm:text-5xl lg:text-7xl font-bold tracking-tight text-white leading-[1.08]">
-              Tu tienda, <br />
-              <span className="bg-gradient-to-r from-rose-400 via-rose-300 to-orange-400 bg-clip-text text-transparent italic font-normal">
-                respondiendo sola.
-              </span>
-            </h1>
-            
-            <p className="mt-6 text-lg sm:text-xl text-slate-400 max-w-xl mx-auto md:mx-0 font-normal leading-relaxed">
-              Sube tu catálogo y en minutos tendrás un asistente de ventas con IA atendiendo a tus clientes 24/7 de forma autónoma. Sin agencias ni esperas técnicas.
-            </p>
-            
-            <div className="mt-10 flex flex-col sm:flex-row items-center justify-center md:justify-start gap-4">
-              <Link 
-                href="/registro" 
-                className="w-full sm:w-auto inline-flex items-center justify-center gap-2 bg-gradient-to-r from-rose-500 to-orange-500 text-white font-medium px-8 py-4 rounded-full shadow-xl shadow-rose-500/20 hover:opacity-95 transition-all transform hover:-translate-y-0.5"
-              >
-                Crear mi chatbot <ArrowRight size={18} />
-              </Link>
-              <a 
-                href="#como-funciona" 
-                className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-6 py-4 rounded-full text-slate-300 hover:text-white bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.08] transition-all text-sm font-medium"
-              >
-                Ver cómo funciona
-              </a>
-            </div>
-          </div>
-
-          {/* Interactive Assistant Preview Widget */}
-          <div className="md:col-span-5">
-            <div className="relative mx-auto max-w-sm rounded-3xl p-1 bg-gradient-to-b from-white/20 to-white/0 shadow-2xl shadow-rose-500/10">
-              <div className="bg-[#12141C] rounded-[22px] p-5 backdrop-blur-xl border border-white/10">
-                <div className="flex items-center justify-between pb-4 mb-4 border-b border-white/[0.08]">
-                  <div className="flex items-center gap-2.5">
-                    <div className="w-3 h-3 rounded-full bg-rose-500 shadow-sm shadow-rose-500" />
-                    <span className="text-slate-300 text-xs font-mono font-medium">Aura Glow — Asistente IA</span>
-                  </div>
-                  <Terminal size={14} className="text-slate-500" />
+            <div className="mock-body">
+              <aside className="mock-sidebar">
+                <div className="mock-logo">V</div>
+                <div className="mock-side-active" />
+                <i /><i /><i /><i /><i />
+              </aside>
+              <div className="mock-main">
+                <div className="mock-heading">
+                  <div><small>OVERVIEW</small><h3>Tu asistente está trabajando.</h3></div>
+                  <span className="mock-status"><b /> En producción</span>
                 </div>
-                
-                <div className="space-y-4 font-sans text-sm">
-                  <div className="bg-white/[0.05] text-slate-200 rounded-2xl rounded-tl-sm px-4 py-3 max-w-[85%] border border-white/[0.02]">
-                    ¿Tenéis el sérum para piel sensible?
-                  </div>
-                  <div className="bg-gradient-to-r from-rose-500 to-rose-600 text-white rounded-2xl rounded-tr-sm px-4 py-3 max-w-[85%] ml-auto shadow-md shadow-rose-500/20">
-                    Sí, el Sérum Calma 30ml — sin fragancia, apto piel sensible. 24,90€. ¿Te lo añado al carrito?
-                  </div>
+                <div className="mock-metrics">
+                  <div><small>CONVERSACIONES</small><strong>1,284</strong><em>+18.4%</em></div>
+                  <div><small>RESOLUCIÓN</small><strong>91.8%</strong><em>+6.2%</em></div>
+                  <div><small>VISITANTES</small><strong>842</strong><em>+12.1%</em></div>
                 </div>
-
-                <div className="mt-5 pt-3 border-t border-white/[0.08] flex items-center justify-between text-[11px] text-slate-500 font-mono">
-                  <span>Estado: Activo (Catálogo Sincronizado)</span>
-                  <span className="text-emerald-400 flex items-center gap-1">● Online</span>
+                <div className="mock-lower">
+                  <div className="mock-chart">
+                    <small>ACTIVIDAD · 7 DÍAS</small>
+                    <div className="fake-chart"><span /><span /><span /><span /><span /><span /><span /><span /></div>
+                  </div>
+                  <div className="mock-chat">
+                    <div className="mini-chat-head"><span>✦</span> VortexAI <b>●</b></div>
+                    <div className="mini-msg">Hola 👋 ¿Buscas algo en particular?</div>
+                    <div className="mini-msg user">¿Cuánto tarda el envío?</div>
+                    <div className="mini-msg">Los pedidos salen en 24h y llegan en 2–3 días.</div>
+                  </div>
                 </div>
               </div>
             </div>
           </div>
-
         </div>
+        <div className="scroll-cue"><span /> Scroll para explorar</div>
+      </section>
 
-        {/* Integration Bar */}
-        <div className="relative mt-20 pt-10 border-t border-white/[0.08]">
-          <p className="text-center text-xs uppercase tracking-widest text-slate-500 font-mono mb-6">
-            Compatible de forma nativa con las principales plataformas del mercado
-          </p>
-          <div className="flex flex-wrap items-center justify-center gap-8 md:gap-16 text-slate-400 font-semibold text-sm opacity-60">
-            <span>Shopify</span>
-            <span>•</span>
-            <span>WooCommerce</span>
-            <span>•</span>
-            <span>PrestaShop</span>
-            <span>•</span>
-            <span>Wix</span>
-            <span>•</span>
-            <span>Tiendanube</span>
-          </div>
+      <section className="marquee-section">
+        <div className="marquee-track">
+          <span>CATÁLOGO INTELIGENTE</span><b>✦</b><span>RECUPERACIÓN DE CARRITOS</span><b>✦</b>
+          <span>EXIT INTENT</span><b>✦</b><span>IA COMERCIAL</span><b>✦</b>
+          <span>ANALÍTICAS REALES</span><b>✦</b><span>HANDOVER HUMANO</span><b>✦</b>
         </div>
       </section>
 
-      {/* CÓMO FUNCIONA */}
-      <section id="como-funciona" className="max-w-7xl mx-auto px-6 py-28 relative">
-        <div className="max-w-2xl mb-20">
-          <span className="text-xs font-mono uppercase tracking-wider text-rose-400 bg-rose-500/10 px-3 py-1 rounded-full border border-rose-500/20">
-            Proceso ágil y sin fricciones
-          </span>
-          <h2 className="text-3xl md:text-5xl font-bold tracking-tight text-white mt-4">
-            De cero a chatbot inteligente en tres pasos.
-          </h2>
+      <section id="producto" className="section product-section">
+        <div className="section-intro reveal" ref={reveal}>
+          <div className="eyebrow">NO ES OTRO CHATBOT</div>
+          <h2>Una capa inteligente entre tu tienda y cada cliente.</h2>
+          <p>VortexAI combina conocimiento del catálogo, automatización y analítica en una experiencia diseñada para ecommerce.</p>
         </div>
 
-        <div className="grid md:grid-cols-3 gap-8">
+        <div className="feature-grid">
           {[
-            { n: '01', icon: Upload, t: 'Sube tu catálogo', d: 'Sube tu inventario mediante un archivo o sintonízalo directamente para que la IA entienda cada referencia.' },
-            { n: '02', icon: Sparkles, t: 'Tu bot se entrena solo', d: 'La inteligencia artificial aprende tus precios, características y especificaciones de forma automática e inmediata.' },
-            { n: '03', icon: Code2, t: 'Pégalo en tu web', d: 'Copia una sencilla línea de código en tu tienda y el asistente aparecerá integrado fluidamente, listo para vender.' },
-          ].map((s) => (
-            <div key={s.n} className="group relative bg-[#12141C]/60 hover:bg-[#12141C] border border-white/[0.08] hover:border-rose-500/40 rounded-3xl p-8 transition-all duration-300">
-              <div className="flex items-center justify-between mb-8">
-                <div className="w-12 h-12 rounded-2xl bg-rose-500/10 border border-rose-500/20 flex items-center justify-center text-rose-400 group-hover:scale-110 transition-transform">
-                  <s.icon size={22} strokeWidth={1.5} />
-                </div>
-                <span className="font-mono text-3xl font-bold text-white/10 group-hover:text-rose-500/30 transition-colors">{s.n}</span>
-              </div>
-              <h3 className="text-xl font-semibold text-white mb-3">{s.t}</h3>
-              <p className="text-slate-400 text-sm leading-relaxed">{s.d}</p>
+            [PackageSearch, 'Catálogo que entiende', 'Importa productos desde CSV o URL y convierte tu información en una base de conocimiento lista para conversar.'],
+            [Bot, 'Respuestas con contexto', 'El asistente utiliza catálogo, envíos, políticas y FAQs para responder con el contexto de tu tienda.'],
+            [MousePointerClick, 'Recupera intención', 'Exit Intent y carritos abandonados intervienen en el momento en que una compra corre peligro.'],
+            [CircleDollarSign, 'Diseñado para vender', 'Cross-selling, modo persuasivo y cupones permiten convertir soporte en oportunidades comerciales.'],
+            [BarChart3, 'Datos de verdad', 'Visualiza conversaciones, visitantes, resolución, temas consultados y actividad sin métricas inventadas.'],
+            [MessageSquare, 'Humano cuando toca', 'Si la IA no puede resolver una situación, el flujo híbrido puede derivar al equipo.'],
+          ].map(([Icon, title, text], index) => {
+            const FeatureIcon = Icon as typeof Bot
+            return (
+              <article className="feature-card reveal" ref={reveal} key={String(title)} style={{ ['--delay' as string]: `${index * 70}ms` }}>
+                <span className="feature-number">0{index + 1}</span>
+                <div className="feature-icon"><FeatureIcon size={20} /></div>
+                <h3>{title as string}</h3>
+                <p>{text as string}</p>
+                <span className="feature-arrow"><ArrowRight size={16} /></span>
+              </article>
+            )
+          })}
+        </div>
+      </section>
+
+      <section id="como-funciona" className="section process-section">
+        <div className="process-visual reveal" ref={reveal}>
+          <div className="orbit orbit-a" />
+          <div className="orbit orbit-b" />
+          <div className="orbit-core"><Sparkles size={32} /></div>
+          <div className="orbit-node node-a"><Store size={17} /></div>
+          <div className="orbit-node node-b"><PackageSearch size={17} /></div>
+          <div className="orbit-node node-c"><MessageSquare size={17} /></div>
+          <div className="orbit-node node-d"><BarChart3 size={17} /></div>
+        </div>
+        <div className="process-copy reveal reveal-delay-1" ref={reveal}>
+          <div className="eyebrow">EN 3 PASOS</div>
+          <h2>De cero a asistente comercial sin rehacer tu ecommerce.</h2>
+          {[
+            ['01', 'Conecta tu conocimiento', 'Sube un CSV, importa tu tienda por URL y añade tus políticas y FAQs.'],
+            ['02', 'Define el comportamiento', 'Activa las funciones IA que necesites y personaliza la identidad del asistente.'],
+            ['03', 'Instala y mide', 'Copia una línea de código, publica el widget y observa el rendimiento real.'],
+          ].map(([num, title, text]) => (
+            <div className="process-step" key={num}>
+              <span>{num}</span><div><h3>{title}</h3><p>{text}</p></div>
             </div>
           ))}
         </div>
       </section>
 
-      {/* PRODUCTO */}
-      <section id="producto" className="bg-[#0E1017] border-y border-white/[0.08] py-28 relative">
-        <div className="max-w-7xl mx-auto px-6">
-          <div className="max-w-2xl mb-16">
-            <span className="text-xs font-mono uppercase tracking-wider text-rose-400 bg-rose-500/10 px-3 py-1 rounded-full border border-rose-500/20">
-              Módulos del producto
-            </span>
-            <h2 className="text-3xl md:text-5xl font-bold tracking-tight text-white mt-4">
-              Un asistente que conoce tu tienda de verdad.
-            </h2>
-            <p className="text-slate-400 mt-4 text-base">
-              Controla y administra las capacidades de tu IA en tiempo real desde tu panel de control personalizado.
-            </p>
-          </div>
-
-          <div className="grid md:grid-cols-3 gap-6">
-            {[
-              { icon: MessageCircle, t: 'Dudas de producto', d: 'Responde con total precisión sobre tallas, ingredientes, stock y precios usando el catálogo real de tu tienda.', estado: 'Activo', on: true },
-              { icon: Zap, t: 'Carritos abandonados', d: 'Identifica patrones de salida en los compradores y despliega asistencia proactiva para asegurar conversiones.', estado: 'Disponible', on: true },
-              { icon: ShieldCheck, t: 'Políticas y Envíos', d: 'Explica plazos de entrega, condiciones de devolución y garantías comerciales de forma automatizada.', estado: 'Disponible', on: true },
-            ].map((f) => (
-              <div key={f.t} className="bg-[#12141C] border border-white/[0.08] rounded-3xl p-8 hover:border-white/20 transition-all flex flex-col justify-between">
-                <div>
-                  <div className="flex items-start justify-between mb-6">
-                    <div className="w-12 h-12 rounded-2xl bg-white/[0.05] border border-white/[0.08] flex items-center justify-center text-rose-400">
-                      <f.icon size={22} strokeWidth={1.5} />
-                    </div>
-                    <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-mono uppercase tracking-wide ${f.on ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'bg-white/[0.05] text-slate-500 border border-white/[0.05]'}`}>
-                      <span className={`w-1.5 h-1.5 rounded-full ${f.on ? 'bg-emerald-400 animate-pulse' : 'bg-slate-500'}`} />
-                      {f.estado}
-                    </span>
-                  </div>
-                  <h3 className="text-xl font-semibold text-white mb-2">{f.t}</h3>
-                  <p className="text-slate-400 text-sm leading-relaxed">{f.d}</p>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* POR QUÉ VORTEXAI */}
-      <section className="max-w-7xl mx-auto px-6 py-28">
-        <div className="grid md:grid-cols-2 gap-16 items-center">
+      <section className="section dark-panel-section">
+        <div className="dark-panel reveal" ref={reveal}>
           <div>
-            <span className="text-xs font-mono uppercase tracking-wider text-rose-400 bg-rose-500/10 px-3 py-1 rounded-full border border-rose-500/20">
-              Por qué VortexAI
-            </span>
-            <h2 className="text-3xl md:text-5xl font-bold tracking-tight text-white mt-4 mb-6">
-              Sin llamadas de ventas. <br />
-              <span className="text-slate-400 font-normal">Sin esperar configuraciones lentas.</span>
-            </h2>
-            <p className="text-slate-400 leading-relaxed text-base">
-              Las soluciones tradicionales te obligan a pasar por consultorías eternas y presupuestos opacos. Con VortexAI creas tu cuenta de forma autónoma y pones a prueba tu asistente en cuestión de minutos.
-            </p>
+            <div className="eyebrow">INTELIGENCIA + OPERACIÓN</div>
+            <h2>Tu equipo deja de responder lo repetitivo y empieza a centrarse en lo importante.</h2>
+            <p>VortexAI automatiza las preguntas que frenan la compra y mantiene una salida clara hacia una persona cuando hace falta.</p>
           </div>
-          
-          <div className="space-y-4">
-            {[
-              'Plataforma 100% autoservicio, sin intermediarios ni demoras',
-              'Esquema de precios transparente, sin costes ocultos',
-              'Gestión de catálogos y parámetros desde un panel intuitivo',
-              'Máxima seguridad y privacidad para los datos de tu e-commerce',
-            ].map((i) => (
-              <div key={i} className="flex items-center gap-4 bg-[#12141C] border border-white/[0.08] rounded-2xl p-5">
-                <div className="w-6 h-6 rounded-full bg-rose-500/10 text-rose-400 flex items-center justify-center shrink-0">
-                  <Check size={14} />
-                </div>
-                <span className="text-sm font-medium text-slate-200">{i}</span>
-              </div>
-            ))}
+          <div className="panel-stats">
+            <div><strong>24/7</strong><span>disponibilidad</span></div>
+            <div><strong>1 línea</strong><span>para instalar</span></div>
+            <div><strong>100%</strong><span>métricas reales</span></div>
           </div>
         </div>
       </section>
 
-      {/* PLANES */}
-      <section id="planes" className="bg-[#0E1017] border-y border-white/[0.08] py-28">
-        <div className="max-w-7xl mx-auto px-6">
-          <div className="max-w-2xl mb-16">
-            <span className="text-xs font-mono uppercase tracking-wider text-rose-400 bg-rose-500/10 px-3 py-1 rounded-full border border-rose-500/20">
-              Planes transparentes
-            </span>
-            <h2 className="text-3xl md:text-5xl font-bold tracking-tight text-white mt-4">Elige tu plan ideal.</h2>
-            <p className="text-slate-400 mt-3 text-base">Total libertad de suscripción, sin permanencias forzadas. Escala según las necesidades de tu tienda.</p>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-6">
-            {[
-              { 
-                nombre: 'Free', 
-                precio: '0€', 
-                subtitulo: 'Configuración libre (Sin Widget).', 
-                detalle: ['Configuración completa', 'Sin widget activo', 'Ideal para pruebas'],
-                btnText: 'Empezar gratis',
-                freePlan: true 
-              },
-              { 
-                nombre: 'Starter', 
-                precio: '49.99€', 
-                subtitulo: 'Ideal para tiendas que empiezan.', 
-                detalle: ['Hasta 1,000 chats / mes', 'Widget desbloqueado', 'Soporte estándar'] 
-              },
-              { 
-                nombre: 'Growth', 
-                precio: '129.99€', 
-                subtitulo: 'Para escalar ventas con IA avanzada.', 
-                detalle: ['Hasta 5,000 chats / mes', 'IA Avanzada & Toggles', 'Soporte prioritario'], 
-                popular: true 
-              },
-              { 
-                nombre: 'Pro', 
-                precio: '249.99€', 
-                subtitulo: 'Automatización total y máxima conversión.', 
-                detalle: ['Chats ilimitados', 'Analíticas avanzadas', 'Soporte dedicado 24/7'] 
-              },
-              { 
-                nombre: 'Custom', 
-                precio: 'A medida', 
-                subtitulo: 'Solución Enterprise para grandes marcas.', 
-                detalle: ['Soluciones a medida', 'Integración ERP / CRM', 'SLA garantizado'] 
-              },
-            ].map((p) => (
-              <div 
-                key={p.nombre} 
-                className={`relative rounded-3xl p-6 flex flex-col justify-between transition-all ${
-                  p.popular 
-                    ? 'bg-gradient-to-b from-[#1E1722] to-[#12141C] border-2 border-rose-500 shadow-2xl shadow-rose-500/10' 
-                    : p.freePlan
-                    ? 'bg-[#12141C] border border-rose-500/40 hover:border-rose-500'
-                    : 'bg-[#12141C] border border-white/[0.08] hover:border-white/20'
-                }`}
-              >
-                {p.popular && (
-                  <span className="absolute -top-3.5 left-1/2 -translate-x-1/2 bg-gradient-to-r from-rose-500 to-orange-500 text-white text-xs font-semibold px-4 py-1 rounded-full shadow-lg">
-                    Más popular
-                  </span>
-                )}
-                <div>
-                  <div className="flex items-center justify-between">
-                    <h3 className="font-semibold text-xl text-white">{p.nombre}</h3>
-                    {p.freePlan && <span className="text-[10px] font-mono bg-rose-500/20 text-rose-400 px-2 py-0.5 rounded-full border border-rose-500/30">Actual</span>}
-                  </div>
-                  <div className="mt-3 flex items-baseline gap-1">
-                    <span className="text-3xl font-bold font-mono tracking-tight text-white">{p.precio}</span>
-                    {p.precio !== 'A medida' && <span className="text-xs text-slate-400">/mes</span>}
-                  </div>
-                  <p className="mt-2 text-xs text-slate-400 min-h-[32px]">{p.subtitulo}</p>
-                  
-                  <ul className="mt-6 space-y-3 text-xs text-slate-300">
-                    {p.detalle.map((d) => (
-                      <li key={d} className="flex items-center gap-2">
-                        <Check size={14} className="text-rose-400 shrink-0" />
-                        <span>{d}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-                
-                <Link
-                  href="/registro"
-                  className={`mt-8 w-full py-3 rounded-full text-center text-xs font-medium transition-all ${
-                    p.popular
-                      ? 'bg-gradient-to-r from-rose-500 to-orange-500 text-white shadow-lg shadow-rose-500/20 hover:opacity-95'
-                      : p.freePlan
-                      ? 'bg-white text-slate-950 hover:bg-slate-200'
-                      : 'bg-white/[0.05] hover:bg-white/[0.1] text-white border border-white/[0.08]'
-                  }`}
-                >
-                  {p.precio === 'A medida' ? 'Contactar' : (p.btnText || `Pagar ${p.nombre}`)}
-                </Link>
-              </div>
-            ))}
-          </div>
+      <section className="section testimonial-section">
+        <div className="section-intro reveal" ref={reveal}>
+          <div className="eyebrow">EXPERIENCIA</div>
+          <h2>Una experiencia que se siente como producto, no como plugin.</h2>
+        </div>
+        <div className="testimonial-grid">
+          {[
+            ['“', 'Por fin podemos enseñar el catálogo al asistente sin mantener respuestas manuales para cada producto.', 'Equipo ecommerce', 'Retail'],
+            ['“', 'La parte que más nos interesa es tener conversaciones y resolución en un mismo lugar, sin inventarnos los datos.', 'Operaciones', 'DTC Brand'],
+            ['“', 'La instalación es sencilla, pero lo potente está en lo que puedes activar después: recuperación, cross-selling y handover.', 'Growth', 'Online Store'],
+          ].map(([quote, text, author, role]) => (
+            <article className="testimonial-card reveal" ref={reveal} key={author}>
+              <span className="quote">{quote}</span><p>{text}</p><div><strong>{author}</strong><span>{role}</span></div>
+            </article>
+          ))}
         </div>
       </section>
 
-      {/* NOSOTROS */}
-      <section id="nosotros" className="border-t border-white/[0.08] max-w-3xl mx-auto px-6 py-20 text-center">
-        <h2 className="text-2xl md:text-3xl font-bold text-white">Quiénes somos</h2>
-        <p className="mt-4 text-slate-400 leading-relaxed text-base">
-          VortexAI nace con el firme objetivo de democratizar la inteligencia artificial para que cualquier tienda online, sin importar su tamaño, disponga de un asistente de ventas de primer nivel sin fricciones técnicas ni costes desmedidos.
-        </p>
+      <section id="precios" className="section pricing-section">
+        <div className="section-intro reveal" ref={reveal}>
+          <div className="eyebrow">PRECIOS</div>
+          <h2>Empieza pequeño. Escala cuando el chatbot empiece a aportar.</h2>
+          <p>Sin planes confusos. Elige el nivel que encaje con el volumen y la madurez de tu tienda.</p>
+        </div>
+        <div className="pricing-grid">
+          {plans.map((plan, index) => (
+            <article className={`pricing-card reveal ${plan.popular ? 'pricing-featured' : ''}`} ref={reveal} key={plan.name} style={{ ['--delay' as string]: `${index * 80}ms` }}>
+              {plan.popular && <div className="popular-pill">MÁS ELEGIDO</div>}
+              <div className="pricing-name">{plan.name}</div>
+              <p>{plan.description}</p>
+              <div className="price"><span>€</span>{plan.price}<small>/mes</small></div>
+              <div className="pricing-divider" />
+              <ul>{plan.features.map(f => <li key={f}><Check size={15} />{f}</li>)}</ul>
+              <a href="/login" className={`pricing-button ${plan.popular ? 'button-primary' : 'button-ghost'}`}>
+                {plan.name === 'Free' ? 'Probar gratis' : `Elegir ${plan.name}`} <ArrowRight size={15} />
+              </a>
+            </article>
+          ))}
+          <article className="pricing-card pricing-custom reveal" ref={reveal}>
+            <div className="pricing-name">Custom</div>
+            <p>Para equipos con integraciones, volumen o requisitos específicos.</p>
+            <div className="price custom-price">A medida</div>
+            <div className="pricing-divider" />
+            <ul><li><Check size={15} />Integraciones a medida</li><li><Check size={15} />ERP / CRM</li><li><Check size={15} />SLA y soporte dedicado</li></ul>
+            <button className="pricing-button button-ghost" onClick={() => setCustomOpen(true)}>Hablar con nosotros <ArrowRight size={15} /></button>
+          </article>
+        </div>
       </section>
 
-      {/* CONTACTO */}
-      <section id="contacto" className="bg-[#0E1017] border-t border-white/[0.08] py-28">
-        <div className="max-w-md mx-auto px-6">
-          <h2 className="text-3xl font-bold text-center text-white">¿Hablamos?</h2>
-          <p className="mt-3 text-slate-400 text-center text-sm">¿Requieres un plan corporativo o adaptado a tu volumen? Escríbenos.</p>
-
-          {enviado ? (
-            <div className="mt-8 p-6 bg-emerald-500/10 border border-emerald-500/20 rounded-2xl text-center text-emerald-400">
-              ¡Mensaje enviado con éxito! Te responderemos en breve.
-            </div>
-          ) : (
-            <form onSubmit={enviarContacto} className="mt-8 space-y-4">
-              <input 
-                required 
-                placeholder="Nombre" 
-                className="w-full bg-[#12141C] border border-white/[0.08] rounded-2xl px-5 py-4 text-sm text-white placeholder:text-slate-500 focus:outline-none focus:border-rose-500 transition-colors" 
-              />
-              <input 
-                required 
-                type="email" 
-                placeholder="Correo electrónico" 
-                className="w-full bg-[#12141C] border border-white/[0.08] rounded-2xl px-5 py-4 text-sm text-white placeholder:text-slate-500 focus:outline-none focus:border-rose-500 transition-colors" 
-              />
-              <textarea 
-                required 
-                placeholder="Cuéntanos brevemente sobre tu tienda online..." 
-                rows={4} 
-                className="w-full bg-[#12141C] border border-white/[0.08] rounded-2xl px-5 py-4 text-sm text-white placeholder:text-slate-500 focus:outline-none focus:border-rose-500 transition-colors resize-none" 
-              />
-              <button 
-                type="submit" 
-                className="w-full bg-gradient-to-r from-rose-500 to-orange-500 text-white font-medium py-4 rounded-full shadow-lg shadow-rose-500/20 hover:opacity-95 transition-all"
-              >
-                Enviar mensaje
+      <section id="faq" className="section faq-section">
+        <div className="section-intro reveal" ref={reveal}>
+          <div className="eyebrow">FAQ</div><h2>Preguntas frecuentes.</h2>
+        </div>
+        <div className="faq-list">
+          {faqs.map(([q, a], index) => (
+            <div className={`faq-item ${openFaq === index ? 'faq-open' : ''} reveal`} ref={reveal} key={q}>
+              <button onClick={() => setOpenFaq(openFaq === index ? null : index)}>
+                <span>{q}</span><ChevronDown size={18} />
               </button>
-            </form>
-          )}
+              <div className="faq-answer"><p>{a}</p></div>
+            </div>
+          ))}
         </div>
       </section>
 
-      {/* FOOTER */}
-      <footer className="max-w-7xl mx-auto px-6 py-12 border-t border-white/[0.08] flex flex-col sm:flex-row items-center justify-between gap-4 text-sm text-slate-500">
-        <span className="font-semibold text-white">Vortex<span className="text-rose-500">AI</span></span>
-        <p>© 2026 VortexAI. Todos los derechos reservados.</p>
-      </footer>
-    </div>
-  )
-}
+      <section className="final-cta">
+        <div className="final-cta-glow" />
+        <div className="eyebrow">READY WHEN YOU ARE</div>
+        <h2>Haz que tu tienda responda.<br /><span>Y también venda.</span></h2>
+        <p>Empieza gratis y construye tu primer asistente de ecommerce con VortexAI.</p>
+        <a href="/login" className="button button-primary">Crear mi asistente <ArrowRight size={17} /></a>
+      </section>
 
-function VortexGraphic() {
-  return (
-    <div className="pointer-events-none absolute left-1/2 top-10 -translate-x-1/2 w-full max-w-5xl h-96 opacity-30 overflow-hidden flex items-center justify-center">
-      <svg className="w-[800px] h-[400px]" viewBox="0 0 1000 500" fill="none" aria-hidden="true">
-        {[...Array(6)].map((_, i) => (
-          <ellipse 
-            key={i} 
-            cx="500" 
-            cy="250" 
-            rx={150 + i * 70} 
-            ry={50 + i * 25} 
-            stroke="url(#roseGradient)" 
-            strokeOpacity={0.7 - i * 0.1} 
-            strokeWidth="1.5" 
-            strokeDasharray="4 8"
-          />
-        ))}
-        <defs>
-          <linearGradient id="roseGradient" x1="0" y1="0" x2="1000" y2="500" gradientUnits="userSpaceOnUse">
-            <stop stopColor="#F43F5E" />
-            <stop offset="1" stopColor="#FB923C" />
-          </linearGradient>
-        </defs>
-      </svg>
-    </div>
+      <footer className="landing-footer">
+        <a href="#top" className="brand"><span className="brand-mark"><Sparkles size={15} /></span>Vortex<span>AI</span></a>
+        <div><span>© 2026 VortexAI</span><a href="/login">Acceso</a><a href="#faq">FAQ</a><a href="mailto:contact@vortexaicom.com">Contacto</a></div>
+      </footer>
+
+      {customOpen && (
+        <div className="modal-backdrop" onMouseDown={() => setCustomOpen(false)}>
+          <div className="custom-modal" onMouseDown={e => e.stopPropagation()}>
+            <button className="modal-close" onClick={() => setCustomOpen(false)}>×</button>
+            {!customSent ? (
+              <>
+                <div className="eyebrow">CUSTOM / ENTERPRISE</div>
+                <h3>Cuéntanos qué necesitas.</h3>
+                <p>Te responderemos desde <strong>contact@vortexaicom.com</strong>.</p>
+                <form onSubmit={submitCustom}>
+                  <input required placeholder="Nombre" value={custom.name} onChange={e => setCustom({ ...custom, name: e.target.value })} />
+                  <input required type="email" placeholder="Email corporativo" value={custom.email} onChange={e => setCustom({ ...custom, email: e.target.value })} />
+                  <textarea required rows={5} placeholder="Volumen, integraciones, necesidades..." value={custom.message} onChange={e => setCustom({ ...custom, message: e.target.value })} />
+                  <button className="button button-primary" type="submit">Preparar solicitud <ArrowRight size={16} /></button>
+                </form>
+              </>
+            ) : (
+              <div className="success-state"><Check size={28} /><h3>Solicitud preparada.</h3><p>Se ha abierto tu cliente de correo para completar el contacto.</p><button className="button button-ghost" onClick={() => setCustomOpen(false)}>Cerrar</button></div>
+            )}
+          </div>
+        </div>
+      )}
+    </main>
   )
 }

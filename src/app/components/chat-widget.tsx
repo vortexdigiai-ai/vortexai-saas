@@ -265,21 +265,11 @@ const [visitorId, setVisitorId] = useState<string | null>(null)
   }, [cargarConfiguracion])
 
   // ============================================================
-  // MODO PREVIEW
-  // ============================================================
-  // En el Overview el mismo ChatWidget se muestra abierto y ocupa
-  // todo el contenedor. Usa exactamente el mismo backend y configuración.
-  useEffect(() => {
-    if (modoPreview) {
-      setAbierto(true)
-    }
-  }, [modoPreview])
-
-
 // COMPROBAR CARRITO ABANDONADO AL ENTRAR
 // ============================================================
 
 useEffect(() => {
+  if (modoPreview) return
   if (!idActual) return
 
   // Esperamos a que widget.js nos entregue el visitorId
@@ -360,6 +350,8 @@ useEffect(() => {
 
   useEffect(() => {
 
+    if (modoPreview) return
+
     const recibirVisitorId = (
       event: MessageEvent
     ) => {
@@ -426,6 +418,8 @@ useEffect(() => {
   // ============================================================
 
   useEffect(() => {
+
+    if (modoPreview) return
 
     if (!exitIntent) {
       return
@@ -708,15 +702,17 @@ useEffect(() => {
   // POSICIÓN DEL WIDGET
   // ============================================================
 
-  const posicionContenedor = modoPreview
-    ? 'relative w-full h-full'
-    : posicion === 'izquierda'
-      ? 'fixed bottom-4 left-4'
-      : 'fixed bottom-4 right-4'
+  const posicionContenedor =
+    modoPreview
+      ? posicion === 'izquierda'
+        ? 'relative w-full h-full flex items-end justify-start'
+        : 'relative w-full h-full flex items-end justify-end'
+      : posicion === 'izquierda'
+        ? 'fixed bottom-4 left-4'
+        : 'fixed bottom-4 right-4'
 
-  const posicionVentana = modoPreview
-    ? ''
-    : posicion === 'izquierda'
+  const posicionVentana =
+    posicion === 'izquierda'
       ? 'left-0'
       : 'right-0'
 
@@ -806,10 +802,7 @@ useEffect(() => {
       {abierto && (
 
         <div
-          className={modoPreview
-            ? 'relative w-full h-full bg-white border border-gray-200 rounded-xl shadow-2xl flex flex-col overflow-hidden'
-            : `absolute bottom-20 ${posicionVentana} w-80 h-96 bg-white border border-gray-200 rounded-2xl shadow-2xl flex flex-col overflow-hidden animate-in fade-in slide-in-from-bottom-3 duration-200`
-          }
+          className={`absolute bottom-20 ${posicionVentana} w-80 h-96 bg-white border border-gray-200 rounded-2xl shadow-2xl flex flex-col overflow-hidden animate-in fade-in slide-in-from-bottom-3 duration-200`}
         >
 
           {/* ==================================================
@@ -972,7 +965,7 @@ useEffect(() => {
                       )
                     }
                     placeholder="Tu nombre"
-                    className="w-full border border-gray-300 rounded-xl px-3 py-2 text-xs text-gray-900 placeholder:text-gray-400 focus:outline-none"
+                    className="w-full border border-gray-300 rounded-xl px-3 py-2 text-xs focus:outline-none"
                   />
 
                   <input
@@ -991,7 +984,7 @@ useEffect(() => {
                       )
                     }
                     placeholder="Tu email"
-                    className="w-full border border-gray-300 rounded-xl px-3 py-2 text-xs text-gray-900 placeholder:text-gray-400 focus:outline-none"
+                    className="w-full border border-gray-300 rounded-xl px-3 py-2 text-xs focus:outline-none"
                   />
 
                   <textarea
@@ -1010,7 +1003,7 @@ useEffect(() => {
                       )
                     }
                     placeholder="¿En qué podemos ayudarte?"
-                    className="w-full border border-gray-300 rounded-xl px-3 py-2 text-xs text-gray-900 placeholder:text-gray-400 focus:outline-none resize-none"
+                    className="w-full border border-gray-300 rounded-xl px-3 py-2 text-xs focus:outline-none resize-none"
                   />
 
                   <button
@@ -1048,7 +1041,7 @@ useEffect(() => {
                 )
               }
               placeholder="Escribe tu mensaje..."
-              className="flex-1 border border-gray-300 rounded-xl px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none"
+              className="flex-1 border border-gray-300 rounded-xl px-3 py-2 text-sm focus:outline-none"
               style={{
                 borderColor:
                   colorPrimario
@@ -1077,7 +1070,6 @@ useEffect(() => {
           BOTÓN DEL CHAT
       ====================================================== */}
 
-      {!modoPreview && (
       <button
         onClick={() => {
 
@@ -1101,7 +1093,6 @@ useEffect(() => {
           : renderAvatarContent(false)}
 
       </button>
-      )}
 
     </div>
   )
