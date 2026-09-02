@@ -71,6 +71,7 @@ if ((!mensaje && !inicioWidget) || !tiendaId) {
         tiempos_envio,
         politicas,
         faqs,
+        plan,
         detector_idioma,
         exit_intent,
         cross_selling,
@@ -92,6 +93,82 @@ if ((!mensaje && !inicioWidget) || !tiendaId) {
         }
       )
     }
+
+    // ============================================================
+    // PLAN Y LÍMITES REALES
+    // ============================================================
+    const PLAN_LEVEL: Record<string, number> = {
+      free: 0,
+      starter: 1,
+      growth: 2,
+      pro: 3,
+      custom: 4,
+    }
+
+    const plan = String(tienda.plan || 'free').trim().toLowerCase()
+    const nivelPlan = PLAN_LEVEL[plan] ?? 0
+    const modoPreview = body.modoPreview === true
+
+    // Límites de mensajes de cliente por mes. Pro y Custom no tienen
+    // límite técnico definido en este nivel de producto.
+    const limiteMensual: Record<string, number | null> = {
+      free: 100,
+      starter: 1000,
+      growth: 5000,
+      pro: null,
+      custom: null,
+    }
+
+    const limite = limiteMensual[plan] ?? 100
+
+    if (!inicioWidget && mensaje.trim() && limite !== null && !modoPreview) {
+      const ahora = new Date()
+      const inicioMes = new Date(ahora.getFullYear(), ahora.getMonth(), 1)
+
+      const { count: mensajesUsados, error: limiteError } = await supabase
+        .from('interacciones_chat')
+        .select('id', { count: 'exact', head: true })
+        .eq('user_id', String(tiendaId))
+        .eq('remitente', 'user')
+        .gte('created_at', inicioMes.toISOString())
+
+      if (limiteError) {
+        console.error('VortexAI: error comprobando límite mensual:', limiteError)
+      } else if ((mensajesUsados || 0) >= limite) {
+        return NextResponse.json(
+          {
+            error: `Has alcanzado el límite de ${limite.toLocaleString('es-ES')} mensajes de cliente de tu plan ${plan}. Actualiza tu suscripción para continuar.`,
+            codigo: 'PLAN_LIMIT_REACHED',
+            plan,
+            limiteMensual: limite,
+          },
+          { status: 402, headers: corsHeaders }
+        )
+      }
+    }
+
+    // Las funciones se calculan con el plan real, incluso si una fila
+    // antigua de Supabase todavía conserva un booleano activado.
+    const featureEnabled = (feature: keyof typeof featureMinPlan) =>
+      nivelPlan >= featureMinPlan[feature] && tienda[feature] === true
+
+    const featureMinPlan = {
+      detector_idioma: 1,
+      exit_intent: 2,
+      cross_selling: 2,
+      modo_persuasivo: 2,
+      carrito_abandonado: 3,
+      analisis_sentimiento: 3,
+      cupones_flash: 3,
+    } as const
+
+    const detectorIdiomaActivo = featureEnabled('detector_idioma')
+    const exitIntentActivo = featureEnabled('exit_intent')
+    const crossSellingActivo = featureEnabled('cross_selling')
+    const modoPersuasivoActivo = featureEnabled('modo_persuasivo')
+    const carritoAbandonadoActivo = featureEnabled('carrito_abandonado')
+    const analisisSentimientoActivo = featureEnabled('analisis_sentimiento')
+    const cuponesFlashActivo = featureEnabled('cupones_flash')
 
     // ============================================================
     // CATÁLOGO
@@ -124,7 +201,7 @@ ${tienda.faqs || 'No hay FAQs personalizadas configuradas.'}
     let carrito: any = null
 
     if (
-      tienda.carrito_abandonado === true &&
+      carritoAbandonadoActivo &&
       visitorId
     ) {
 
@@ -262,7 +339,7 @@ ${tienda.faqs || 'No hay FAQs personalizadas configuradas.'}
     let instruccionesCarrito = ''
 
     if (
-      tienda.carrito_abandonado === true &&
+      carritoAbandonadoActivo &&
       carrito
     ) {
 
@@ -347,7 +424,7 @@ REGLAS:
 
     if (
       inicioWidget &&
-      tienda.carrito_abandonado === true &&
+      carritoAbandonadoActivo &&
       carrito &&
       carrito.estado === 'abandoned' &&
       Array.isArray(carrito.items) &&
@@ -390,7 +467,7 @@ IMPORTANTE:
 
     let instruccionesFunciones = ''
 
-    if (tienda.detector_idioma) {
+    if (detectorIdiomaActivo) {
 
       instruccionesFunciones += `
 - DETECCIÓN DE IDIOMA: Detecta automáticamente el idioma en el que escribe el cliente y responde en ese mismo idioma.
@@ -398,7 +475,7 @@ IMPORTANTE:
 
     }
 
-    if (tienda.cross_selling) {
+    if (crossSellingActivo) {
 
       instruccionesFunciones += `
 - CROSS-SELLING: Cuando sea relevante, recomienda productos complementarios del catálogo que puedan combinarse con el producto que está consultando el cliente. No inventes productos y no fuerces recomendaciones cuando no sean útiles.
@@ -406,7 +483,7 @@ IMPORTANTE:
 
     }
 
-    if (tienda.modo_persuasivo) {
+    if (modoPersuasivoActivo) {
 
       instruccionesFunciones += `
 - MODO URGENCIA Y ESCASEZ: Puedes mencionar información de stock limitado o disponibilidad reducida SOLO cuando esa información aparezca realmente en el catálogo. Nunca inventes escasez, unidades disponibles o promociones.
@@ -414,7 +491,7 @@ IMPORTANTE:
 
     }
 
-    if (tienda.analisis_sentimiento) {
+    if (analisisSentimientoActivo) {
 
       instruccionesFunciones += `
 - ANÁLISIS DE SENTIMIENTO: Detecta si el cliente muestra frustración, enfado, duda o satisfacción y adapta el tono de la respuesta. Si está frustrado, responde con especial empatía y claridad.
@@ -422,7 +499,7 @@ IMPORTANTE:
 
     }
 
-    if (tienda.cupones_flash) {
+    if (cuponesFlashActivo) {
 
       instruccionesFunciones += `
 - CUPONES: Si el cliente expresa dudas relacionadas con la compra o el precio, puedes sugerir que existe una posibilidad de descuento, pero NO inventes códigos de cupón ni porcentajes de descuento que no hayan sido proporcionados por el sistema.

@@ -61,12 +61,12 @@ const NAV: { id: Tab; label: string; icon: typeof LayoutDashboard; section: stri
 ]
 
 const features = [
-  { key: 'detector_idioma', title: 'Detector de idioma', description: 'Detecta el idioma de la conversación y adapta la respuesta.', min: 'free' as Plan },
-  { key: 'exit_intent', title: 'Exit Intent', description: 'Activa el asistente cuando el visitante muestra intención de abandonar.', min: 'starter' as Plan },
-  { key: 'cross_selling', title: 'Cross-selling', description: 'Sugiere productos relacionados cuando existe una oportunidad clara.', min: 'starter' as Plan },
+  { key: 'detector_idioma', title: 'Detector de idioma', description: 'Detecta el idioma de la conversación y adapta la respuesta.', min: 'starter' as Plan },
+  { key: 'exit_intent', title: 'Exit Intent', description: 'Activa el asistente cuando el visitante muestra intención de abandonar.', min: 'growth' as Plan },
+  { key: 'cross_selling', title: 'Cross-selling', description: 'Sugiere productos relacionados cuando existe una oportunidad clara.', min: 'growth' as Plan },
   { key: 'modo_persuasivo', title: 'Modo persuasivo', description: 'Aumenta el enfoque comercial sin perder las reglas de conocimiento.', min: 'growth' as Plan },
-  { key: 'carrito_abandonado', title: 'Carritos abandonados', description: 'Detecta carritos inactivos y puede activar el contexto de recuperación.', min: 'growth' as Plan },
-  { key: 'analisis_sentimiento', title: 'Análisis de sentimiento', description: 'Ayuda a detectar frustración y priorizar el handover.', min: 'growth' as Plan },
+  { key: 'carrito_abandonado', title: 'Carritos abandonados', description: 'Detecta carritos inactivos y puede activar el contexto de recuperación.', min: 'pro' as Plan },
+  { key: 'analisis_sentimiento', title: 'Análisis de sentimiento', description: 'Ayuda a detectar frustración y priorizar el handover.', min: 'pro' as Plan },
   { key: 'cupones_flash', title: 'Cupones flash', description: 'Permite utilizar el flujo de cupones cuando esté configurado.', min: 'pro' as Plan },
 ]
 
@@ -177,9 +177,9 @@ export default function DashboardPage() {
     setMetrics(now); setPreviousMetrics(prev)
 
     const start = rangeStart(selectedRange)
-    const { data } = await supabase.from('interacciones_chat').select('texto').eq('user_id', id).gte('created_at', start.toISOString()).limit(5000)
+    const { data } = await supabase.from('interacciones_chat').select('texto, remitente').eq('user_id', id).gte('created_at', start.toISOString()).limit(5000)
     const counts: Record<string, number> = {}
-    ;(data || []).forEach(row => { const topic = classify(row.texto || ''); counts[topic] = (counts[topic] || 0) + 1 })
+    ;(data || []).filter(row => row.remitente === 'user' || row.remitente === 'usuario' || row.remitente === 'cliente').forEach(row => { const topic = classify(row.texto || ''); counts[topic] = (counts[topic] || 0) + 1 })
     setTopics(Object.entries(counts).sort((a,b) => b[1]-a[1]).map(([name,count]) => ({ name, count })))
     setLoading(false)
   }, [computeMetrics])
@@ -402,65 +402,28 @@ export default function DashboardPage() {
                       <div className="vx-hero-tags"><span><ShieldCheck size={13} /> Base de conocimiento</span><span><Activity size={13} /> Datos en vivo</span><span><Zap size={13} /> Automatización</span></div>
                     </Card>
                     <Card className="vx-health">
-                      <div className="vx-card-head"><div><span className="vx-eyebrow">Health score</span><h3>{health}<small>/100</small></h3></div><span className="vx-health-ring" style={{ ['--health' as string]: `${health * 3.6}deg` }}><span>{health}</span></span></div>
-                      <p>Basado únicamente en la configuración y datos disponibles de tu cuenta.</p>
+                      <div className="vx-card-head"><div><span className="vx-eyebrow">Configuración</span><h3>{health}<small>/100</small></h3></div><span className="vx-health-ring" style={{ ['--health' as string]: `${health * 3.6}deg` }}><span>{health}</span></span></div>
+                      <p>Indicador de preparación del asistente. No se presenta como una métrica de rendimiento comercial.</p>
                       <div className="vx-progress"><span style={{ width: `${health}%` }} /></div>
                       <button className="vx-link" onClick={() => changeTab('catalogo')}>Mejorar configuración <ArrowUpRight size={14} /></button>
                     </Card>
                   </div>
 
                   <div className="vx-metric-grid">
-  {[
-    {
-      label: 'Conversaciones',
-      value: metrics.totalChats,
-      delta: metricDelta(
-        metrics.totalChats,
-        previousMetrics.totalChats
-      ),
-      Icon: MessageSquare,
-    },
-    {
-      label: 'Mensajes procesados',
-      value: metrics.mensajes,
-      delta: metricDelta(
-        metrics.mensajes,
-        previousMetrics.mensajes
-      ),
-      Icon: Activity,
-    },
-    {
-      label: 'Visitantes únicos',
-      value: metrics.visitantes,
-      delta: metricDelta(
-        metrics.visitantes,
-        previousMetrics.visitantes
-      ),
-      Icon: Users,
-    },
-    {
-      label: 'Resolución',
-      value: `${metrics.tasaResolucion}%`,
-      delta: metricDelta(
-        metrics.tasaResolucion,
-        previousMetrics.tasaResolucion
-      ),
-      Icon: Check,
-    },
-  ].map(({ label, value, delta, Icon }) => (
-    <Card className="vx-metric" key={label}>
-      <div className="vx-metric-icon">
-        <Icon size={17} />
-      </div>
-
-      <span>{label}</span>
-
-      <strong>{value}</strong>
-
-      <small>{delta} vs periodo anterior</small>
-    </Card>
-  ))}
-</div>
+                    {([
+                      { label: 'Conversaciones', value: metrics.totalChats, delta: metricDelta(metrics.totalChats, previousMetrics.totalChats), Icon: MessageSquare },
+                      { label: 'Mensajes procesados', value: metrics.mensajes, delta: metricDelta(metrics.mensajes, previousMetrics.mensajes), Icon: Activity },
+                      { label: 'Visitantes únicos', value: metrics.visitantes, delta: metricDelta(metrics.visitantes, previousMetrics.visitantes), Icon: Users },
+                      { label: 'Resolución', value: `${metrics.tasaResolucion}%`, delta: metricDelta(metrics.tasaResolucion, previousMetrics.tasaResolucion), Icon: Check },
+                    ] as Array<{ label: string; value: ReactNode; delta: string; Icon: typeof Activity }>).map(({ label, value, delta, Icon }) => (
+                      <Card className="vx-metric" key={label}>
+                        <div className="vx-metric-icon"><Icon size={17} /></div>
+                        <span>{label}</span>
+                        <strong>{value}</strong>
+                        <small>{delta} vs periodo anterior</small>
+                      </Card>
+                    ))}
+                  </div>
 
                   <div className="vx-two-col">
                     <Card><div className="vx-card-head"><div><span className="vx-eyebrow">Actividad</span><h3>Temas consultados</h3></div><button className="vx-icon-btn" onClick={() => changeTab('analiticas')}><ArrowUpRight size={16} /></button></div>{topics.length ? <div className="vx-topic-list">{topics.slice(0,5).map((x,i) => <div className="vx-topic" key={x.name}><div><span>{String(i+1).padStart(2,'0')}</span><strong>{x.name}</strong></div><b>{formatNumber(x.count)}</b></div>)}</div> : <div className="vx-empty"><BarChart3 size={22}/><span>Aún no hay suficientes conversaciones para mostrar actividad.</span></div>}</Card>
@@ -534,15 +497,15 @@ export default function DashboardPage() {
 
               {tab === 'planes' && (
                 <>
-                  <SectionTitle eyebrow="Account" title="Planes" description="Elige el nivel de automatización que necesitas." />
+                  <SectionTitle eyebrow="Account" title="Planes" description="Gestiona tu suscripción. Los planes de pago te llevan directamente a Stripe." />
                   <div className="vx-plans">{[
-                    ['free','Free','0','Prueba y configuración'],
-                    ['starter','Starter','49','Widget + soporte'],
-                    ['growth','Growth','99','IA comercial avanzada'],
-                    ['pro','Pro','249','Automatización completa'],
-                    ['custom','Custom','A medida','Enterprise'],
-                  ].map(([id,name,price,desc]) => <Card key={id} className={`vx-plan-card ${currentPlan === id ? 'selected' : ''}`}><span className="vx-eyebrow">{name}</span><strong>{price === '0' ? '€0' : price === 'A medida' ? 'A medida' : `€${price}`}<small>{price !== 'A medida' && '/mes'}</small></strong><p>{desc}</p>{currentPlan === id ? <span className="vx-current-plan"><Check size={13}/> Plan actual</span> : id === 'custom' ? <button className="vx-btn ghost full" onClick={() => setCustomOpen(true)}>Contactar</button> : <a className="vx-btn primary full" href="/login">Elegir {name}</a>}</Card>)}</div>
-                  <Card className="vx-plan-note"><ShieldCheck size={17}/><p>Los planes mostrados aquí siguen la estructura actual de VortexAI: Free 0 €, Starter 49 €, Growth 99 € y Pro 249 € al mes.</p></Card>
+                    { id: 'free' as Plan, name: 'Free', price: '0', desc: 'Prueba y configuración', href: '' },
+                    { id: 'starter' as Plan, name: 'Starter', price: '49', desc: 'Widget + automatización', href: 'https://buy.stripe.com/5kQcMY3K76wE9hJ5Jq7ss02' },
+                    { id: 'growth' as Plan, name: 'Growth', price: '99', desc: 'IA comercial avanzada', href: 'https://buy.stripe.com/7sY9AM80ndZ60Ld3Bi7ss03' },
+                    { id: 'pro' as Plan, name: 'Pro', price: '249', desc: 'Automatización completa', href: 'https://buy.stripe.com/fZu4gs5Sf5sAalNc7O7ss04' },
+                    { id: 'custom' as Plan, name: 'Custom', price: 'A medida', desc: 'Enterprise', href: '' },
+                  ].map((plan) => <Card key={plan.id} className={`vx-plan-card ${currentPlan === plan.id ? 'selected' : ''}`}><span className="vx-eyebrow">{plan.name}</span><strong>{plan.price === '0' ? '€0' : plan.price === 'A medida' ? 'A medida' : `€${plan.price}`}<small>{plan.price !== 'A medida' && '/mes'}</small></strong><p>{plan.desc}</p>{currentPlan === plan.id ? <span className="vx-current-plan"><Check size={13}/> Plan actual</span> : plan.id === 'free' ? <span className="vx-muted">Plan gratuito</span> : plan.id === 'custom' ? <button className="vx-btn ghost full" onClick={() => setCustomOpen(true)}>Contactar</button> : <a className="vx-btn primary full" href={plan.href} target="_self" rel="noopener noreferrer">Continuar con {plan.name} <ExternalLink size={13}/></a>}</Card>)}</div>
+                  <Card className="vx-plan-note"><ShieldCheck size={17}/><p>Starter 49 €, Growth 99 € y Pro 249 € al mes. El checkout se realiza en Stripe. El plan de la cuenta debe actualizarse mediante el flujo de suscripción/webhook correspondiente; no se cambia manualmente desde este panel.</p></Card>
                 </>
               )}
 

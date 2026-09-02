@@ -109,6 +109,7 @@ export default function LandingPage() {
           <a href="#producto">Producto</a>
           <a href="#como-funciona">Cómo funciona</a>
           <a href="#precios">Precios</a>
+          <a href="#custom">Custom</a>
           <a href="#faq">FAQ</a>
         </div>
         <div className="nav-actions">
@@ -309,8 +310,30 @@ export default function LandingPage() {
             <div className="price custom-price">A medida</div>
             <div className="pricing-divider" />
             <ul><li><Check size={15} />Integraciones a medida</li><li><Check size={15} />ERP / CRM</li><li><Check size={15} />SLA y soporte dedicado</li></ul>
-            <button className="pricing-button button-ghost" onClick={() => setCustomOpen(true)}>Hablar con nosotros <ArrowRight size={15} /></button>
+            <button className="pricing-button button-ghost" onClick={() => setCustomOpen(true)}>Solicitar plan Custom <ArrowRight size={15} /></button>
           </article>
+        </div>
+      </section>
+
+      <section id="custom" className="section custom-section">
+        <div className="custom-panel reveal" ref={reveal}>
+          <div className="custom-copy">
+            <div className="eyebrow">CUSTOM / ENTERPRISE</div>
+            <h2>Una configuración diseñada para tu negocio.</h2>
+            <p>Si necesitas integraciones, más volumen, requisitos específicos o un flujo comercial personalizado, cuéntanos tu caso y prepararemos una propuesta.</p>
+            <div className="custom-points">
+              <span>Integraciones ERP / CRM</span><span>Volumen personalizado</span><span>SLA y soporte dedicado</span><span>Arquitectura a medida</span>
+            </div>
+          </div>
+          <form className="custom-inline-form" onSubmit={submitCustom}>
+            {!customSent ? <>
+              <label>Nombre<input required placeholder="Tu nombre" value={custom.name} onChange={e => setCustom({ ...custom, name: e.target.value })} /></label>
+              <label>Email corporativo<input required type="email" placeholder="nombre@empresa.com" value={custom.email} onChange={e => setCustom({ ...custom, email: e.target.value })} /></label>
+              <label>Cuéntanos tu caso<textarea required rows={5} placeholder="Volumen, integraciones, necesidades..." value={custom.message} onChange={e => setCustom({ ...custom, message: e.target.value })} /></label>
+              <button className="button button-primary" type="submit">Solicitar contacto <ArrowRight size={16} /></button>
+              <small>También puedes escribir directamente a contact@vortexaicom.com.</small>
+            </> : <div className="success-state inline"><Check size={28} /><h3>Solicitud preparada.</h3><p>Se ha abierto tu cliente de correo con la información rellenada.</p></div>}
+          </form>
         </div>
       </section>
 

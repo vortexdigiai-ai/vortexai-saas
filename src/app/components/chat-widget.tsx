@@ -19,6 +19,7 @@ export default function ChatWidget({
   const [colorPrimario, setColorPrimario] = useState('#f43f5e')
   const [posicion, setPosicion] = useState<'derecha' | 'izquierda'>('derecha')
   const [avatarUrl, setAvatarUrl] = useState('default')
+  const [plan, setPlan] = useState('free')
 
   // ============================================================
   // VISITOR ID
@@ -77,6 +78,7 @@ const [visitorId, setVisitorId] = useState<string | null>(null)
   const finRef = useRef<HTMLDivElement>(null)
 
   const carritoComprobado = useRef(false)
+  const conversationIdRef = useRef<string | null>(null)
 
   // ============================================================
   // OBTENER ID REAL DE LA TIENDA
@@ -122,6 +124,13 @@ const [visitorId, setVisitorId] = useState<string | null>(null)
 
   const idActual = obtenerTiendaIdReal()
 
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const key = `vortexai_conversation_${String(idActual)}`
+    const stored = window.sessionStorage.getItem(key)
+    if (stored) conversationIdRef.current = stored
+  }, [idActual])
+
   // ============================================================
   // CARGAR CONFIGURACIÓN DE LA TIENDA
   // ============================================================
@@ -158,6 +167,8 @@ const [visitorId, setVisitorId] = useState<string | null>(null)
       )
 
       if (data && !data.error) {
+
+        setPlan(String(data.plan || 'free').trim().toLowerCase())
 
         if (data.nombre_asistente) {
 
@@ -291,7 +302,8 @@ useEffect(() => {
           mensaje: '',
           tiendaId: idActual,
           visitorId: visitorId,
-          inicioWidget: true
+          inicioWidget: true,
+          modoPreview
         })
       })
 
@@ -531,8 +543,11 @@ useEffect(() => {
                 idActual,
               visitorId:
                 visitorId,
+              conversationId:
+                conversationIdRef.current,
               fallbackIntentos:
-                fallbackIntentos
+                fallbackIntentos,
+              modoPreview
             })
           }
         )
@@ -545,6 +560,16 @@ useEffect(() => {
           data.error ||
           'Error del servidor'
         )
+      }
+
+      if (data.conversationId) {
+        conversationIdRef.current = String(data.conversationId)
+        if (typeof window !== 'undefined') {
+          window.sessionStorage.setItem(
+            `vortexai_conversation_${String(idActual)}`,
+            conversationIdRef.current
+          )
+        }
       }
 
       setMensajes((prev) => [
@@ -699,6 +724,15 @@ useEffect(() => {
   }
 
     // ============================================================
+  // RESTRICCIÓN DE WIDGET POR PLAN
+  // ============================================================
+  // Free puede utilizar el preview del dashboard, pero el widget de
+  // producción queda disponible únicamente desde Starter.
+  if (!modoPreview && plan === 'free') {
+    return null
+  }
+
+  // ============================================================
   // POSICIÓN DEL WIDGET
   // ============================================================
 
