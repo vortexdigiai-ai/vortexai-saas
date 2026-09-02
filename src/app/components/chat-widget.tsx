@@ -79,6 +79,7 @@ const [visitorId, setVisitorId] = useState<string | null>(null)
 
   const carritoComprobado = useRef(false)
   const conversationIdRef = useRef<string | null>(null)
+  const [chatHydrated, setChatHydrated] = useState(false)
 
   // ============================================================
   // OBTENER ID REAL DE LA TIENDA
@@ -126,10 +127,80 @@ const [visitorId, setVisitorId] = useState<string | null>(null)
 
   useEffect(() => {
     if (typeof window === 'undefined') return
-    const key = `vortexai_conversation_${String(idActual)}`
-    const stored = window.sessionStorage.getItem(key)
-    if (stored) conversationIdRef.current = stored
+
+    const id = String(idActual)
+    const conversationKey = `vortexai_conversation_${id}`
+    const stateKey = `vortexai_chat_state_${id}`
+
+    const storedConversation = window.sessionStorage.getItem(conversationKey)
+    if (storedConversation) {
+      conversationIdRef.current = storedConversation
+    }
+
+    const storedState = window.sessionStorage.getItem(stateKey)
+
+    if (storedState) {
+      try {
+        const parsed = JSON.parse(storedState)
+
+        if (Array.isArray(parsed.mensajes) && parsed.mensajes.length > 0) {
+          setMensajes(parsed.mensajes)
+        }
+
+        if (typeof parsed.fallbackIntentos === 'number') {
+          setFallbackIntentos(parsed.fallbackIntentos)
+        }
+
+        if (parsed.handover && typeof parsed.handover === 'object') {
+          setHandover(parsed.handover)
+        }
+
+        if (parsed.formHandover && typeof parsed.formHandover === 'object') {
+          setFormHandover({
+            nombre: String(parsed.formHandover.nombre || ''),
+            email: String(parsed.formHandover.email || ''),
+            mensaje: String(parsed.formHandover.mensaje || ''),
+          })
+        }
+
+        if (typeof parsed.handoverEnviado === 'boolean') {
+          setHandoverEnviado(parsed.handoverEnviado)
+        }
+      } catch (error) {
+        console.error('VortexAI: no se pudo restaurar la conversación:', error)
+      }
+    }
+
+    setChatHydrated(true)
   }, [idActual])
+
+  // Persistimos el estado del chat para que un rerender/remount del dashboard
+  // no borre una conversación ni cierre el formulario de handover mientras
+  // el visitante está escribiendo sus datos.
+  useEffect(() => {
+    if (!chatHydrated || typeof window === 'undefined') return
+
+    const stateKey = `vortexai_chat_state_${String(idActual)}`
+
+    window.sessionStorage.setItem(
+      stateKey,
+      JSON.stringify({
+        mensajes,
+        fallbackIntentos,
+        handover,
+        formHandover,
+        handoverEnviado,
+      })
+    )
+  }, [
+    chatHydrated,
+    idActual,
+    mensajes,
+    fallbackIntentos,
+    handover,
+    formHandover,
+    handoverEnviado,
+  ])
 
   // ============================================================
   // CARGAR CONFIGURACIÓN DE LA TIENDA
@@ -223,15 +294,21 @@ const [visitorId, setVisitorId] = useState<string | null>(null)
         // ======================================================
 
         if (data.mensaje_bienvenida) {
+          const stateKey = `vortexai_chat_state_${String(idActual)}`
+          const hasStoredConversation =
+            typeof window !== 'undefined' &&
+            !!window.sessionStorage.getItem(stateKey)
 
-          setMensajes([
-            {
-              rol: 'bot',
-              texto:
-                data.mensaje_bienvenida,
-            },
-          ])
-
+          // Solo mostramos el mensaje de bienvenida en una conversación nueva.
+          // Nunca sustituimos una conversación ya iniciada.
+          if (!hasStoredConversation) {
+            setMensajes([
+              {
+                rol: 'bot',
+                texto: data.mensaje_bienvenida,
+              },
+            ])
+          }
         }
 
       }
@@ -1080,10 +1157,12 @@ useEffect(() => {
                 )
               }
               placeholder="Escribe tu mensaje..."
-              className="flex-1 border border-gray-300 rounded-xl px-3 py-2 text-sm focus:outline-none"
+              className="flex-1 border border-gray-300 rounded-xl px-3 py-2 text-sm focus:outline-none text-gray-900 placeholder:text-gray-400"
               style={{
-                borderColor:
-                  colorPrimario
+                borderColor: colorPrimario,
+                color: '#111827',
+                backgroundColor: '#ffffff',
+                caretColor: colorPrimario,
               }}
             />
 
@@ -1111,13 +1190,7 @@ useEffect(() => {
 
       <button
         onClick={() => {
-
-          setAbierto(!abierto)
-
-          if (!abierto) {
-            cargarConfiguracion()
-          }
-
+          setAbierto((prev) => !prev)
         }}
         className="text-white w-14 h-14 rounded-full shadow-2xl flex items-center justify-center hover:scale-105 transition-all duration-300 cursor-pointer overflow-hidden border-2 border-white/20"
         style={{
