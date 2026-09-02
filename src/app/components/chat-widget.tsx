@@ -1053,7 +1053,7 @@ useEffect(() => {
                     placeholder="Tu nombre"
                     className="w-full border border-gray-300 rounded-xl px-3 py-2 text-xs focus:outline-none"
                     style={{
-                borderColor:
+                    borderColor:
                   colorPrimario,
                   color: '#000000',
                   backgroundColor: '#ffffff'
@@ -1078,11 +1078,12 @@ useEffect(() => {
                     placeholder="Tu email"
                     className="w-full border border-gray-300 rounded-xl px-3 py-2 text-xs focus:outline-none"
                     style={{
-                borderColor:
-                  colorPrimario,
-                  color: '#000000',
-                  backgroundColor: '#ffffff'
-                 }}
+                      borderColor:
+                        colorPrimario,
+                        color: '#000000',
+                        backgroundColor: '#ffffff'
+              
+                    }}
                   />
 
                   <textarea
@@ -1103,9 +1104,12 @@ useEffect(() => {
                     placeholder="¿En qué podemos ayudarte?"
                     className="w-full border border-gray-300 rounded-xl px-3 py-2 text-xs focus:outline-none resize-none"
                     style={{
-                borderColor:
-                  colorPrimario
-              }}
+                      borderColor:
+                        colorPrimario,
+                        color: '#000000',
+                        backgroundColor: '#ffffff'
+              
+                    }}
                   />
 
                   <button
@@ -1150,9 +1154,7 @@ useEffect(() => {
               className="flex-1 border border-gray-300 rounded-xl px-3 py-2 text-sm text-black focus:outline-none"
               style={{
                 borderColor:
-                  colorPrimario,
-                  color: '#000000',
-                  backgroundColor: '#ffffff'
+                  colorPrimario
               }}
             />
 
@@ -1161,10 +1163,8 @@ useEffect(() => {
               disabled={cargando}
               className="text-white px-4 py-2 rounded-xl text-sm font-medium hover:opacity-90 disabled:opacity-50 cursor-pointer transition-colors duration-300"
               style={{
-                borderColor:
-                  colorPrimario,
-                  color: '#000000',
-                  backgroundColor: '#ffffff'
+                backgroundColor:
+                  colorPrimario
               }}
             >
               Enviar
