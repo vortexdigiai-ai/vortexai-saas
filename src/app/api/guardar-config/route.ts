@@ -62,6 +62,40 @@ export async function POST(req: Request) {
           ? body.faqs
           : '',
 
+      // FLUJOS HÍBRIDOS Y REGLAS DE ESCAPE
+      accion_fallback:
+        typeof body.accion_fallback === 'string' &&
+        ['formulario', 'whatsapp', 'email'].includes(body.accion_fallback)
+          ? body.accion_fallback
+          : 'formulario',
+
+      whatsapp_soporte:
+        typeof body.whatsapp_soporte === 'string'
+          ? body.whatsapp_soporte.trim()
+          : '',
+
+      email_soporte:
+        typeof body.email_soporte === 'string'
+          ? body.email_soporte.trim()
+          : '',
+
+      umbral_frustracion:
+        Number.isFinite(Number(body.umbral_frustracion))
+          ? Math.min(
+              3,
+              Math.max(
+                1,
+                Number(body.umbral_frustracion)
+              )
+            )
+          : 2,
+
+      mensaje_fallback:
+        typeof body.mensaje_fallback === 'string' &&
+        body.mensaje_fallback.trim()
+          ? body.mensaje_fallback.trim()
+          : 'Vaya, parece que no tengo esa información exacta. Déjanos tus datos y un especialista humano te contactará de inmediato.',
+
       // FUNCIONES IA
       detector_idioma:
         typeof body.detector_idioma === 'boolean'
@@ -102,7 +136,7 @@ export async function POST(req: Request) {
     // Comprobamos si ya existe el registro en la tabla 'tiendas'
     const { data: existente, error: buscarError } = await supabase
       .from('tiendas')
-      .select('user_id, plan')
+      .select('user_id')
       .eq('user_id', user_id)
       .maybeSingle();
 
@@ -111,39 +145,6 @@ export async function POST(req: Request) {
         { error: buscarError.message },
         { status: 500 }
       );
-    }
-
-    // ============================================================
-    // RESTRICCIONES DE PLAN — VALIDACIÓN EN SERVIDOR
-    // ============================================================
-    // La interfaz también bloquea estas funciones, pero nunca
-    // debemos confiar únicamente en el cliente: cualquier petición
-    // HTTP podría intentar activar una función superior.
-    const PLAN_LEVEL: Record<string, number> = {
-      free: 0,
-      starter: 1,
-      growth: 2,
-      pro: 3,
-      custom: 4,
-    };
-
-    const planActual = String(existente?.plan || 'free').trim().toLowerCase();
-    const nivelActual = PLAN_LEVEL[planActual] ?? 0;
-
-    const minPlan: Record<string, number> = {
-      detector_idioma: 1,
-      exit_intent: 2,
-      cross_selling: 2,
-      modo_persuasivo: 2,
-      carrito_abandonado: 3,
-      analisis_sentimiento: 3,
-      cupones_flash: 3,
-    };
-
-    for (const [feature, nivelNecesario] of Object.entries(minPlan)) {
-      if (nivelActual < nivelNecesario) {
-        updateData[feature] = false;
-      }
     }
 
     let errorSupabase = null;

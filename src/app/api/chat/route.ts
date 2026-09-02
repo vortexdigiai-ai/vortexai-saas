@@ -33,6 +33,25 @@ const visitorId =
   body.visitorId ||
   body.visitor_id
 
+    // Identificador estable de la conversación.
+    // El widget lo conserva durante la sesión y lo reenvía
+    // en cada mensaje. Si algún cliente no lo proporciona,
+    // generamos uno nuevo para no perder la interacción.
+    const conversationId =
+      typeof body.conversationId === 'string' &&
+      body.conversationId.trim()
+        ? body.conversationId.trim()
+        : crypto.randomUUID()
+
+const fallbackIntentosCliente =
+  Math.max(
+    0,
+    Math.min(
+      20,
+      Number(body.fallbackIntentos || 0)
+    )
+  )
+
 const inicioWidget =
   body.inicioWidget === true
 
@@ -66,20 +85,27 @@ if ((!mensaje && !inicioWidget) || !tiendaId) {
     } = await supabase
       .from('tiendas')
       .select(`
-        nombre_tienda,
-        productos_json,
-        tiempos_envio,
-        politicas,
-        faqs,
-        plan,
-        detector_idioma,
-        exit_intent,
-        cross_selling,
-        modo_persuasivo,
-        carrito_abandonado,
-        analisis_sentimiento,
-        cupones_flash
-      `)
+  nombre_tienda,
+  productos_json,
+  tiempos_envio,
+  politicas,
+  faqs,
+
+  accion_fallback,
+  whatsapp_soporte,
+  email_soporte,
+  umbral_frustracion,
+  mensaje_fallback,
+
+  detector_idioma,
+  exit_intent,
+  cross_selling,
+  modo_persuasivo,
+  carrito_abandonado,
+  analisis_sentimiento,
+  cupones_flash,
+  plan
+`)
       .eq('user_id', tiendaId)
       .single()
 
@@ -93,82 +119,6 @@ if ((!mensaje && !inicioWidget) || !tiendaId) {
         }
       )
     }
-
-    // ============================================================
-    // PLAN Y LÍMITES REALES
-    // ============================================================
-    const PLAN_LEVEL: Record<string, number> = {
-      free: 0,
-      starter: 1,
-      growth: 2,
-      pro: 3,
-      custom: 4,
-    }
-
-    const plan = String(tienda.plan || 'free').trim().toLowerCase()
-    const nivelPlan = PLAN_LEVEL[plan] ?? 0
-    const modoPreview = body.modoPreview === true
-
-    // Límites de mensajes de cliente por mes. Pro y Custom no tienen
-    // límite técnico definido en este nivel de producto.
-    const limiteMensual: Record<string, number | null> = {
-      free: 100,
-      starter: 1000,
-      growth: 5000,
-      pro: null,
-      custom: null,
-    }
-
-    const limite = limiteMensual[plan] ?? 100
-
-    if (!inicioWidget && mensaje.trim() && limite !== null && !modoPreview) {
-      const ahora = new Date()
-      const inicioMes = new Date(ahora.getFullYear(), ahora.getMonth(), 1)
-
-      const { count: mensajesUsados, error: limiteError } = await supabase
-        .from('interacciones_chat')
-        .select('id', { count: 'exact', head: true })
-        .eq('user_id', String(tiendaId))
-        .eq('remitente', 'user')
-        .gte('created_at', inicioMes.toISOString())
-
-      if (limiteError) {
-        console.error('VortexAI: error comprobando límite mensual:', limiteError)
-      } else if ((mensajesUsados || 0) >= limite) {
-        return NextResponse.json(
-          {
-            error: `Has alcanzado el límite de ${limite.toLocaleString('es-ES')} mensajes de cliente de tu plan ${plan}. Actualiza tu suscripción para continuar.`,
-            codigo: 'PLAN_LIMIT_REACHED',
-            plan,
-            limiteMensual: limite,
-          },
-          { status: 402, headers: corsHeaders }
-        )
-      }
-    }
-
-    // Las funciones se calculan con el plan real, incluso si una fila
-    // antigua de Supabase todavía conserva un booleano activado.
-    const featureEnabled = (feature: keyof typeof featureMinPlan) =>
-      nivelPlan >= featureMinPlan[feature] && tienda[feature] === true
-
-    const featureMinPlan = {
-      detector_idioma: 1,
-      exit_intent: 2,
-      cross_selling: 2,
-      modo_persuasivo: 2,
-      carrito_abandonado: 3,
-      analisis_sentimiento: 3,
-      cupones_flash: 3,
-    } as const
-
-    const detectorIdiomaActivo = featureEnabled('detector_idioma')
-    const exitIntentActivo = featureEnabled('exit_intent')
-    const crossSellingActivo = featureEnabled('cross_selling')
-    const modoPersuasivoActivo = featureEnabled('modo_persuasivo')
-    const carritoAbandonadoActivo = featureEnabled('carrito_abandonado')
-    const analisisSentimientoActivo = featureEnabled('analisis_sentimiento')
-    const cuponesFlashActivo = featureEnabled('cupones_flash')
 
     // ============================================================
     // CATÁLOGO
@@ -201,7 +151,7 @@ ${tienda.faqs || 'No hay FAQs personalizadas configuradas.'}
     let carrito: any = null
 
     if (
-      carritoAbandonadoActivo &&
+      tienda.carrito_abandonado === true &&
       visitorId
     ) {
 
@@ -339,7 +289,7 @@ ${tienda.faqs || 'No hay FAQs personalizadas configuradas.'}
     let instruccionesCarrito = ''
 
     if (
-      carritoAbandonadoActivo &&
+      tienda.carrito_abandonado === true &&
       carrito
     ) {
 
@@ -424,7 +374,7 @@ REGLAS:
 
     if (
       inicioWidget &&
-      carritoAbandonadoActivo &&
+      tienda.carrito_abandonado === true &&
       carrito &&
       carrito.estado === 'abandoned' &&
       Array.isArray(carrito.items) &&
@@ -467,7 +417,7 @@ IMPORTANTE:
 
     let instruccionesFunciones = ''
 
-    if (detectorIdiomaActivo) {
+    if (tienda.detector_idioma) {
 
       instruccionesFunciones += `
 - DETECCIÓN DE IDIOMA: Detecta automáticamente el idioma en el que escribe el cliente y responde en ese mismo idioma.
@@ -475,7 +425,7 @@ IMPORTANTE:
 
     }
 
-    if (crossSellingActivo) {
+    if (tienda.cross_selling) {
 
       instruccionesFunciones += `
 - CROSS-SELLING: Cuando sea relevante, recomienda productos complementarios del catálogo que puedan combinarse con el producto que está consultando el cliente. No inventes productos y no fuerces recomendaciones cuando no sean útiles.
@@ -483,7 +433,7 @@ IMPORTANTE:
 
     }
 
-    if (modoPersuasivoActivo) {
+    if (tienda.modo_persuasivo) {
 
       instruccionesFunciones += `
 - MODO URGENCIA Y ESCASEZ: Puedes mencionar información de stock limitado o disponibilidad reducida SOLO cuando esa información aparezca realmente en el catálogo. Nunca inventes escasez, unidades disponibles o promociones.
@@ -491,7 +441,7 @@ IMPORTANTE:
 
     }
 
-    if (analisisSentimientoActivo) {
+    if (tienda.analisis_sentimiento) {
 
       instruccionesFunciones += `
 - ANÁLISIS DE SENTIMIENTO: Detecta si el cliente muestra frustración, enfado, duda o satisfacción y adapta el tono de la respuesta. Si está frustrado, responde con especial empatía y claridad.
@@ -499,13 +449,37 @@ IMPORTANTE:
 
     }
 
-    if (cuponesFlashActivo) {
+    if (tienda.cupones_flash) {
 
       instruccionesFunciones += `
 - CUPONES: Si el cliente expresa dudas relacionadas con la compra o el precio, puedes sugerir que existe una posibilidad de descuento, pero NO inventes códigos de cupón ni porcentajes de descuento que no hayan sido proporcionados por el sistema.
 `
 
     }
+
+    // ============================================================
+    // CONFIGURACIÓN DE REGLAS DE ESCAPE
+    // ============================================================
+
+    const umbralFrustracion =
+      Math.max(
+        1,
+        Math.min(
+          3,
+          Number(tienda.umbral_frustracion || 2)
+        )
+      )
+
+    const accionFallback =
+      ['formulario', 'whatsapp', 'email'].includes(
+        tienda.accion_fallback
+      )
+        ? tienda.accion_fallback
+        : 'formulario'
+
+    const mensajeFallback =
+      tienda.mensaje_fallback ||
+      'Vaya, parece que no tengo esa información exacta. Déjanos tus datos y un especialista humano te contactará de inmediato.'
 
     // ============================================================
     // LLAMADA A ANTHROPIC
@@ -530,6 +504,12 @@ POLÍTICAS Y FAQS DE LA TIENDA:
 ${politicasTexto}
 
 Si no tienes la información necesaria, dilo con sinceridad y no te la inventes.
+
+REGLA DE DETECCIÓN DE INFORMACIÓN NO ENCONTRADA:
+Si la información necesaria NO aparece en el catálogo, políticas o FAQs, comienza tu respuesta exactamente con:
+[VORTEXAI_NO_ENCONTRADO]
+Después del marcador, explica brevemente que no tienes esa información.
+Si sí existe información suficiente, NO uses ese marcador.
 
 Cuando el cliente pregunte por envíos, plazos, costes de envío, devoluciones, cambios o una FAQ, utiliza la información correspondiente de POLÍTICAS Y FAQS DE LA TIENDA. No respondas que no tienes acceso a esa información si sí aparece ahí.
 
@@ -576,11 +556,190 @@ Nunca inventes información que no aparezca en los datos proporcionados.
     const primerBloque =
       respuesta.content[0]
 
-    const textoRespuesta =
+    let textoRespuesta =
       primerBloque &&
       primerBloque.type === 'text'
         ? primerBloque.text
         : ''
+
+    const contieneNoEncontrado =
+      textoRespuesta.includes(
+        '[VORTEXAI_NO_ENCONTRADO]'
+      )
+
+    const contieneFrustracion =
+      textoRespuesta.includes(
+        '[VORTEXAI_FRUSTRACION]'
+      )
+
+    const textoLimpio =
+      textoRespuesta
+        .replace(
+          '[VORTEXAI_NO_ENCONTRADO]',
+          ''
+        )
+        .replace(
+          '[VORTEXAI_FRUSTRACION]',
+          ''
+        )
+        .trim()
+
+    const textoLower =
+      textoLimpio.toLowerCase()
+
+    // Detección secundaria por si el modelo no devuelve el marcador.
+    const deteccionSecundaria =
+      textoLower.includes(
+        'no tengo esa información'
+      ) ||
+      textoLower.includes(
+        'no tengo informacion'
+      ) ||
+      textoLower.includes(
+        'no dispongo de esa información'
+      ) ||
+      textoLower.includes(
+        'no puedo proporcionar esa información'
+      ) ||
+      textoLower.includes(
+        'no está disponible en'
+      ) ||
+      textoLower.includes(
+        'no esta disponible en'
+      )
+
+    const respuestaNoEncontrada =
+      contieneNoEncontrado ||
+      deteccionSecundaria
+
+    const intentosFallback =
+      respuestaNoEncontrada
+        ? fallbackIntentosCliente + 1
+        : 0
+
+    const debeDerivar =
+      !inicioWidget &&
+      (
+        intentosFallback >=
+          umbralFrustracion ||
+        (
+          tienda.analisis_sentimiento === true &&
+          contieneFrustracion
+        )
+      )
+
+    let respuestaFinal =
+      textoLimpio
+
+    let handover = false
+
+    let handoverAction:
+      | 'formulario'
+      | 'whatsapp'
+      | 'email'
+      | null = null
+
+    let whatsappUrl:
+      string | null = null
+
+    let emailUrl:
+      string | null = null
+
+    if (debeDerivar) {
+
+      handover = true
+      handoverAction =
+        accionFallback
+
+      respuestaFinal =
+        mensajeFallback
+
+      if (
+        accionFallback ===
+        'whatsapp'
+      ) {
+        const numero = String(tienda.whatsapp_soporte || '').replace(/\D/g, '')
+
+        // WhatsApp necesita un número internacional válido.
+        if (numero.length >= 9) {
+          const textoWhatsApp = `Hola, necesito ayuda con mi consulta en ${tienda.nombre_tienda || 'la tienda'}.`
+          whatsappUrl = `https://wa.me/${numero}?text=${encodeURIComponent(textoWhatsApp)}`
+        }
+      }
+
+      if (
+        accionFallback ===
+        'email'
+      ) {
+
+        const email =
+          String(
+            tienda.email_soporte ||
+            ''
+          ).trim()
+
+        if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+          emailUrl =
+            `mailto:${email}?subject=${encodeURIComponent(
+              `Ayuda desde ${tienda.nombre_tienda || 'la tienda'}`
+            )}&body=${encodeURIComponent(
+              `Hola, necesito ayuda con mi consulta en ${tienda.nombre_tienda || 'la tienda'}.`
+            )}`
+        }
+      }
+
+    } else if (
+      respuestaNoEncontrada
+    ) {
+
+      respuestaFinal =
+        textoLimpio ||
+        'No encuentro esa información en la base de conocimiento de la tienda.'
+    }
+
+    // ============================================================
+    // ANALÍTICAS REALES
+    // ============================================================
+    // Una respuesta se considera resuelta cuando el asistente
+    // ha podido responder sin activar el fallback ni derivar
+    // al equipo humano. Guardamos el estado junto a cada mensaje
+    // para que el dashboard pueda reconstruir la conversación real.
+    const resuelta =
+      !respuestaNoEncontrada &&
+      !handover
+
+    // Las comprobaciones automáticas al entrar al widget no son
+    // conversaciones de cliente y no deben contaminar las métricas.
+    if (!inicioWidget && mensaje.trim()) {
+      const { error: errorInteraccion } =
+        await supabase
+          .from('interacciones_chat')
+          .insert([
+            {
+              user_id: String(tiendaId),
+              conversation_id: conversationId,
+              visitor_id: visitorId || null,
+              remitente: 'user',
+              texto: mensaje,
+              resuelta,
+            },
+            {
+              user_id: String(tiendaId),
+              conversation_id: conversationId,
+              visitor_id: visitorId || null,
+              remitente: 'ai',
+              texto: respuestaFinal,
+              resuelta,
+            },
+          ])
+
+      if (errorInteraccion) {
+        console.error(
+          'VortexAI: error guardando interacción para analíticas:',
+          errorInteraccion
+        )
+      }
+    }
 
     // ============================================================
     // RESPUESTA
@@ -588,7 +747,19 @@ Nunca inventes información que no aparezca en los datos proporcionados.
 
     return NextResponse.json(
   {
-    respuesta: textoRespuesta,
+    respuesta: respuestaFinal,
+    conversationId,
+    resuelta,
+    fallbackDetectado: respuestaNoEncontrada,
+    fallbackIntentos: intentosFallback,
+    handover,
+    handoverAction,
+    whatsappUrl,
+    emailUrl,
+    mensajeFallback:
+      handover
+        ? mensajeFallback
+        : null,
     carritoAbandonado:
       carrito?.estado === 'abandoned' &&
       Array.isArray(carrito.items) &&

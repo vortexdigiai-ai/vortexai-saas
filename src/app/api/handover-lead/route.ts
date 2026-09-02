@@ -16,6 +16,9 @@ export async function POST(req: Request) {
     const visitorId =
       String(body.visitorId || '').trim()
 
+    const conversationId =
+      String(body.conversationId || '').trim()
+
     const nombre =
       String(body.nombre || '').trim()
 
@@ -66,6 +69,9 @@ export async function POST(req: Request) {
       `Email: ${email}`,
       visitorId
         ? `Visitor ID: ${visitorId}`
+        : '',
+      conversationId
+        ? `Conversación: ${conversationId}`
         : '',
       '',
       `Mensaje: ${mensaje}`

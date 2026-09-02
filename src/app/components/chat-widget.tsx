@@ -663,6 +663,8 @@ useEffect(() => {
                 idActual,
               visitorId:
                 visitorId,
+              conversationId:
+                conversationIdRef.current,
               nombre:
                 formHandover.nombre.trim(),
               email:
@@ -921,11 +923,11 @@ useEffect(() => {
           ================================================== */}
 
           {handover && !handoverEnviado && (
-            <div className="bg-white border-t border-gray-200 p-3 space-y-2">
+            <div className="vx-handover-panel bg-white border-t border-gray-200 p-3 space-y-2 text-gray-900" style={{ color: '#111827' }}>
 
               {handover.action === 'whatsapp' && (
                 <div className="space-y-2">
-                  <p className="text-xs text-gray-700">
+                  <p className="text-xs text-gray-700" style={{ color: '#374151' }}>
                     Si necesitas ayuda de una persona, puedes contactar directamente con soporte.
                   </p>
 
@@ -934,7 +936,7 @@ useEffect(() => {
                       href={handover.whatsappUrl}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="block w-full text-center text-white px-3 py-2 rounded-xl text-sm font-medium"
+                      className="block w-full text-center text-white px-3 py-2 rounded-xl text-sm font-medium no-underline"
                       style={{
                         backgroundColor:
                           colorPrimario
@@ -959,7 +961,7 @@ useEffect(() => {
                   {handover.emailUrl ? (
                     <a
                       href={handover.emailUrl}
-                      className="block w-full text-center text-white px-3 py-2 rounded-xl text-sm font-medium"
+                      className="block w-full text-center text-white px-3 py-2 rounded-xl text-sm font-medium no-underline"
                       style={{
                         backgroundColor:
                           colorPrimario
@@ -982,7 +984,7 @@ useEffect(() => {
                   }
                   className="space-y-2"
                 >
-                  <p className="text-xs font-medium text-gray-800">
+                  <p className="text-xs font-medium text-gray-800" style={{ color: '#111827' }}>
                     Déjanos tus datos y el equipo podrá ayudarte.
                   </p>
 
@@ -1002,7 +1004,7 @@ useEffect(() => {
                       )
                     }
                     placeholder="Tu nombre"
-                    className="w-full border border-gray-300 rounded-xl px-3 py-2 text-xs focus:outline-none"
+                    className="w-full border border-gray-300 rounded-xl px-3 py-2 text-xs focus:outline-none text-gray-900" style={{ color: '#111827', backgroundColor: '#ffffff' }}
                   />
 
                   <input
@@ -1021,7 +1023,7 @@ useEffect(() => {
                       )
                     }
                     placeholder="Tu email"
-                    className="w-full border border-gray-300 rounded-xl px-3 py-2 text-xs focus:outline-none"
+                    className="w-full border border-gray-300 rounded-xl px-3 py-2 text-xs focus:outline-none text-gray-900" style={{ color: '#111827', backgroundColor: '#ffffff' }}
                   />
 
                   <textarea
@@ -1040,7 +1042,7 @@ useEffect(() => {
                       )
                     }
                     placeholder="¿En qué podemos ayudarte?"
-                    className="w-full border border-gray-300 rounded-xl px-3 py-2 text-xs focus:outline-none resize-none"
+                    className="w-full border border-gray-300 rounded-xl px-3 py-2 text-xs focus:outline-none resize-none text-gray-900" style={{ color: '#111827', backgroundColor: '#ffffff' }}
                   />
 
                   <button

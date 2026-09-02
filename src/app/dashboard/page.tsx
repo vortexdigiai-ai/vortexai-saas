@@ -24,6 +24,7 @@ import {
   LogOut,
   Menu,
   MessageSquare,
+  Mail,
   Palette,
   RefreshCw,
   Search,
@@ -39,7 +40,7 @@ import {
   Zap,
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
-import ChatWidget from '@/app/components/chat-widget'
+import ChatWidget from '../components/chat-widget'
 
 type Tab = 'overview' | 'catalogo' | 'ia' | 'personalizacion' | 'flujos' | 'analiticas' | 'conversaciones' | 'widget' | 'planes' | 'ajustes'
 type Plan = 'free' | 'starter' | 'growth' | 'pro' | 'custom'
@@ -461,8 +462,71 @@ export default function DashboardPage() {
 
               {tab === 'flujos' && (
                 <>
-                  <SectionTitle eyebrow="Human handover" title="Flujos híbridos" description="Define cuándo la IA debe dejar paso a una persona." />
-                  <div className="vx-settings-grid"><Card><span className="vx-eyebrow">Fallback</span><h3>Acción cuando no hay respuesta</h3><label>Derivar a<select className={inputClass} value={config.accion_fallback || 'formulario'} onChange={e => updateConfig('accion_fallback', e.target.value)}><option value="formulario">Formulario</option><option value="whatsapp">WhatsApp</option><option value="email">Email</option></select></label>{config.accion_fallback === 'whatsapp' && <label>WhatsApp<input className={inputClass} value={config.whatsapp_soporte || ''} onChange={e => updateConfig('whatsapp_soporte', e.target.value)} placeholder="+34600000000" /></label>}<label>Mensaje de fallback<textarea className={inputClass} rows={5} value={config.mensaje_fallback || ''} onChange={e => updateConfig('mensaje_fallback', e.target.value)} /></label></Card><Card><span className="vx-eyebrow">Frustration guard</span><h3>Umbral de derivación</h3><label>Intentos fallidos<select className={inputClass} value={String(config.umbral_frustracion || 2)} onChange={e => updateConfig('umbral_frustracion', Number(e.target.value))}><option value="1">1 intento</option><option value="2">2 intentos</option><option value="3">3 intentos</option></select></label><div className="vx-callout"><ShieldCheck size={17}/><p>Un fallback claro evita que una conversación se quede atrapada en un bucle.</p></div></Card><div className="vx-save-row span-2"><span>Los flujos se aplican al motor de conversación.</span><button className="vx-btn primary" disabled={saving} onClick={save}>{saving ? 'Guardando…' : 'Guardar flujos'} <Check size={15}/></button></div></div>
+                  <SectionTitle eyebrow="Human handover" title="Flujos híbridos" description="Diseña qué ocurre cuando la IA no puede resolver una consulta. Cada canal se conecta de verdad con el visitante." />
+
+                  <div className="vx-flow-hero">
+                    <div className="vx-flow-hero-icon"><GitFork size={19} /></div>
+                    <div><strong>Derivación inteligente</strong><span>Después del número de intentos configurado, VortexAI deja de insistir y muestra el canal de contacto que hayas elegido.</span></div>
+                    <div className="vx-flow-status"><i /> Activo</div>
+                  </div>
+
+                  <div className="vx-settings-grid vx-flow-grid">
+                    <Card className="vx-flow-card">
+                      <div className="vx-card-head">
+                        <div><span className="vx-eyebrow">Fallback</span><h3>Canal de contacto</h3></div>
+                        <ShieldCheck size={18} />
+                      </div>
+                      <p className="vx-muted">Elige dónde debe llevar al cliente cuando la IA no pueda resolver su consulta.</p>
+
+                      <div className="vx-channel-grid">
+                        <button type="button" className={`vx-channel ${config.accion_fallback === 'formulario' || !config.accion_fallback ? 'active' : ''}`} onClick={() => updateConfig('accion_fallback','formulario')}>
+                          <FileText size={18}/><span><strong>Formulario</strong><small>Captura los datos del lead</small></span><Check size={15} />
+                        </button>
+                        <button type="button" className={`vx-channel ${config.accion_fallback === 'whatsapp' ? 'active' : ''}`} onClick={() => updateConfig('accion_fallback','whatsapp')}>
+                          <MessageSquare size={18}/><span><strong>WhatsApp</strong><small>Abre una conversación directa</small></span><Check size={15} />
+                        </button>
+                        <button type="button" className={`vx-channel ${config.accion_fallback === 'email' ? 'active' : ''}`} onClick={() => updateConfig('accion_fallback','email')}>
+                          <Mail size={18}/><span><strong>Email</strong><small>Abre el correo del cliente</small></span><Check size={15} />
+                        </button>
+                      </div>
+
+                      {config.accion_fallback === 'whatsapp' && (
+                        <div className="vx-channel-config">
+                          <label>WhatsApp de soporte<input className={inputClass} value={config.whatsapp_soporte || ''} onChange={e => updateConfig('whatsapp_soporte', e.target.value)} placeholder="+34 600 000 000" inputMode="tel" /></label>
+                          <div className="vx-inline-help"><span>Usa el número con prefijo internacional.</span>{String(config.whatsapp_soporte || '').replace(/\D/g,'').length >= 9 && <a href={`https://wa.me/${String(config.whatsapp_soporte).replace(/\D/g,'')}`} target="_blank" rel="noopener noreferrer">Probar WhatsApp <ArrowUpRight size={12}/></a>}</div>
+                        </div>
+                      )}
+
+                      {config.accion_fallback === 'email' && (
+                        <div className="vx-channel-config">
+                          <label>Email de soporte<input className={inputClass} type="email" value={config.email_soporte || ''} onChange={e => updateConfig('email_soporte', e.target.value)} placeholder="soporte@tutienda.com" /></label>
+                          <div className="vx-inline-help"><span>Se abrirá el cliente de correo del visitante.</span>{String(config.email_soporte || '').includes('@') && <a href={`mailto:${String(config.email_soporte).trim()}`} target="_blank" rel="noopener noreferrer">Probar email <ArrowUpRight size={12}/></a>}</div>
+                        </div>
+                      )}
+
+                      {config.accion_fallback === 'formulario' || !config.accion_fallback ? (
+                        <div className="vx-form-info"><FileText size={15}/><span>El formulario recoge nombre, email y consulta y guarda el lead en tus conversaciones.</span></div>
+                      ) : null}
+
+                      <label>Mensaje de fallback<textarea className={inputClass} rows={4} value={config.mensaje_fallback || ''} onChange={e => updateConfig('mensaje_fallback', e.target.value)} placeholder="No he podido resolverlo. Te pongo en contacto con nuestro equipo." /></label>
+                    </Card>
+
+                    <Card className="vx-flow-card">
+                      <div className="vx-card-head">
+                        <div><span className="vx-eyebrow">Frustration guard</span><h3>Cuándo derivar</h3></div>
+                        <Activity size={18} />
+                      </div>
+                      <p className="vx-muted">Controla cuántas respuestas sin resolver deben producirse antes de mostrar el canal humano.</p>
+                      <label>Intentos fallidos<select className={inputClass} value={String(config.umbral_frustracion || 2)} onChange={e => updateConfig('umbral_frustracion', Number(e.target.value))}><option value="1">Después de 1 intento</option><option value="2">Después de 2 intentos</option><option value="3">Después de 3 intentos</option></select></label>
+                      <div className="vx-threshold">
+                        {[1,2,3].map(n => <div key={n} className={`vx-threshold-step ${Number(config.umbral_frustracion || 2) >= n ? 'active' : ''}`}><span>{n}</span><small>{n === 1 ? 'Primera duda' : n === 2 ? 'Segundo intento' : 'Derivación'}</small></div>)}
+                      </div>
+                      <div className="vx-callout"><ShieldCheck size={17}/><p>El motor conserva el contexto de la conversación para que el cliente no tenga que repetir toda su consulta.</p></div>
+                      <div className="vx-flow-test"><span><strong>¿Quieres comprobarlo?</strong> Guarda la configuración y prueba una pregunta que no exista en el catálogo.</span><span className="vx-flow-badge">Canal: {config.accion_fallback === 'whatsapp' ? 'WhatsApp' : config.accion_fallback === 'email' ? 'Email' : 'Formulario'}</span></div>
+                    </Card>
+
+                    <div className="vx-save-row span-2 vx-flow-save"><div><strong>Listo para producción</strong><span>Los cambios se guardan en Supabase y se aplican al motor de conversación.</span></div><button className="vx-btn primary" disabled={saving} onClick={save}>{saving ? 'Guardando…' : 'Guardar y aplicar'} <Check size={15}/></button></div>
+                  </div>
                 </>
               )}
 
