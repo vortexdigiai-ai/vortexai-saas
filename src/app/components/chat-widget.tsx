@@ -1142,21 +1142,6 @@ useEffect(() => {
             className="bg-white border-t border-gray-200 p-2.5 flex gap-2"
           >
 
-            <input
-              type="text"
-              value={input}
-              onChange={(e) =>
-                setInput(
-                  e.target.value
-                )
-              }
-              placeholder="Escribe tu mensaje..."
-              className="flex-1 border border-gray-300 rounded-xl px-3 py-2 text-sm text-black focus:outline-none"
-              style={{
-                borderColor:
-                  colorPrimario
-              }}
-            />
 
             <button
               type="submit"
