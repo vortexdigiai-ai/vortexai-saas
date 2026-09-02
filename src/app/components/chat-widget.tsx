@@ -1064,7 +1064,7 @@ useEffect(() => {
                 )
               }
               placeholder="Escribe tu mensaje..."
-              className="flex-1 border border-gray-300 rounded-xl px-3 py-2 text-sm focus:outline-none"
+              className="flex-1 border border-gray-300 rounded-xl px-3 py-2 text-sm text-black focus:outline-none"
               style={{
                 borderColor:
                   colorPrimario
