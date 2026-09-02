@@ -33,16 +33,6 @@ const visitorId =
   body.visitorId ||
   body.visitor_id
 
-    // Identificador estable de la conversación.
-    // El widget lo conserva durante la sesión y lo reenvía
-    // en cada mensaje. Si algún cliente no lo proporciona,
-    // generamos uno nuevo para no perder la interacción.
-    const conversationId =
-      typeof body.conversationId === 'string' &&
-      body.conversationId.trim()
-        ? body.conversationId.trim()
-        : crypto.randomUUID()
-
 const fallbackIntentosCliente =
   Math.max(
     0,
@@ -54,6 +44,21 @@ const fallbackIntentosCliente =
 
 const inicioWidget =
   body.inicioWidget === true
+
+const conversationIdRecibido =
+  typeof body.conversationId === 'string'
+    ? body.conversationId.trim()
+    : ''
+
+const uuidValido =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+    conversationIdRecibido
+  )
+
+const conversationId =
+  uuidValido
+    ? conversationIdRecibido
+    : crypto.randomUUID()
 
 if ((!mensaje && !inicioWidget) || !tiendaId) {
       return NextResponse.json(
@@ -123,10 +128,55 @@ if ((!mensaje && !inicioWidget) || !tiendaId) {
     // CATÁLOGO
     // ============================================================
 
-    const catalogoTexto =
-      JSON.stringify(
-        tienda.productos_json || []
+    const catalogoCompleto =
+      Array.isArray(tienda.productos_json)
+        ? tienda.productos_json
+        : []
+
+    // Para catálogos grandes no enviamos miles de productos a Claude
+    // en cada mensaje. Seleccionamos los productos más relacionados
+    // con la consulta y dejamos un pequeño contexto general.
+    const palabrasConsulta =
+      String(mensaje || '')
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .split(/[^a-z0-9]+/)
+        .filter((palabra: string) => palabra.length >= 3)
+
+    const productosPuntuados =
+      catalogoCompleto.map((producto: any, index: number) => {
+        const textoProducto =
+          JSON.stringify(producto)
+            .toLowerCase()
+            .normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, '')
+
+        let puntuacion = 0
+
+        for (const palabra of palabrasConsulta) {
+          if (textoProducto.includes(palabra)) {
+            puntuacion += 1
+          }
+        }
+
+        return { producto, puntuacion, index }
+      })
+      .sort((a: any, b: any) =>
+        b.puntuacion - a.puntuacion ||
+        a.index - b.index
       )
+
+    const limiteCatalogoContexto =
+      palabrasConsulta.length > 0 ? 60 : 40
+
+    const productosParaIA =
+      productosPuntuados
+        .slice(0, limiteCatalogoContexto)
+        .map((item: any) => item.producto)
+
+    const catalogoTexto =
+      JSON.stringify(productosParaIA)
 
     // ============================================================
     // POLÍTICAS Y BASE DE CONOCIMIENTO
@@ -616,18 +666,9 @@ Nunca inventes información que no aparezca en los datos proporcionados.
         ? fallbackIntentosCliente + 1
         : 0
 
-    // Si la IA confirma que no encuentra la información, derivamos
-    // inmediatamente al canal configurado. Así el cliente no se queda
-    // viendo únicamente el texto de fallback.
     const debeDerivar =
       !inicioWidget &&
-      (
-        respuestaNoEncontrada ||
-        (
-          tienda.analisis_sentimiento === true &&
-          contieneFrustracion
-        )
-      )
+      respuestaNoEncontrada
 
     let respuestaFinal =
       textoLimpio
@@ -710,16 +751,15 @@ Nunca inventes información que no aparezca en los datos proporcionados.
     // ============================================================
     // ANALÍTICAS REALES
     // ============================================================
-    // Una respuesta se considera resuelta cuando el asistente
-    // ha podido responder sin activar el fallback ni derivar
-    // al equipo humano. Guardamos el estado junto a cada mensaje
-    // para que el dashboard pueda reconstruir la conversación real.
+
+    // Una consulta se considera resuelta cuando el bot pudo responder
+    // sin activar el fallback ni derivar al equipo humano.
     const resuelta =
       !respuestaNoEncontrada &&
       !handover
 
-    // Las comprobaciones automáticas al entrar al widget no son
-    // conversaciones de cliente y no deben contaminar las métricas.
+    // Las comprobaciones automáticas del carrito no se registran como
+    // conversaciones de cliente para no contaminar las analíticas.
     if (!inicioWidget && mensaje.trim()) {
       const { error: errorInteraccion } =
         await supabase

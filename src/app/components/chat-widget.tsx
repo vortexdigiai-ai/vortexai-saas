@@ -79,16 +79,6 @@ const [visitorId, setVisitorId] = useState<string | null>(null)
   const carritoComprobado = useRef(false)
 
   // ============================================================
-  // PERSISTENCIA DEL ESTADO DEL CHAT
-  // Evita que el preview pierda el formulario/handover si el
-  // dashboard vuelve a renderizar el componente.
-  // ============================================================
-
-  const estadoChatRestaurado = useRef(false)
-  const primerGuardadoEstado = useRef(true)
-  const handoverRef = useRef<typeof handover>(null)
-
-  // ============================================================
   // OBTENER ID REAL DE LA TIENDA
   // ============================================================
 
@@ -131,91 +121,6 @@ const [visitorId, setVisitorId] = useState<string | null>(null)
   }, [tiendaId])
 
   const idActual = obtenerTiendaIdReal()
-  const claveEstadoChat = `vortexai_chat_state_${String(idActual)}`
-
-  // ============================================================
-  // RESTAURAR ESTADO DEL CHAT
-  // ============================================================
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return
-
-    estadoChatRestaurado.current = true
-
-    try {
-      const guardado = window.sessionStorage.getItem(claveEstadoChat)
-
-      if (!guardado) return
-
-      const estado = JSON.parse(guardado)
-
-      if (Array.isArray(estado.mensajes) && estado.mensajes.length > 0) {
-        setMensajes(estado.mensajes)
-      }
-
-      if (typeof estado.fallbackIntentos === 'number') {
-        setFallbackIntentos(estado.fallbackIntentos)
-      }
-
-      if (estado.handover) {
-        setHandover(estado.handover)
-        handoverRef.current = estado.handover
-      }
-
-      if (estado.formHandover) {
-        setFormHandover({
-          nombre: String(estado.formHandover.nombre || ''),
-          email: String(estado.formHandover.email || ''),
-          mensaje: String(estado.formHandover.mensaje || ''),
-        })
-      }
-
-      if (typeof estado.handoverEnviado === 'boolean') {
-        setHandoverEnviado(estado.handoverEnviado)
-      }
-    } catch (error) {
-      console.error('VortexAI: no se pudo restaurar el estado del chat:', error)
-    }
-  }, [claveEstadoChat])
-
-  // Guardamos conversación + handover + formulario mientras el usuario
-  // está interactuando. sessionStorage evita perderlo durante un remount.
-  useEffect(() => {
-    if (typeof window === 'undefined' || !estadoChatRestaurado.current) return
-
-    // El primer efecto ocurre en el mismo render que restaura el estado.
-    // Lo saltamos para no sobrescribir inmediatamente lo recuperado.
-    if (primerGuardadoEstado.current) {
-      primerGuardadoEstado.current = false
-      return
-    }
-
-    try {
-      window.sessionStorage.setItem(
-        claveEstadoChat,
-        JSON.stringify({
-          mensajes,
-          fallbackIntentos,
-          handover,
-          formHandover,
-          handoverEnviado,
-        })
-      )
-    } catch (error) {
-      console.error('VortexAI: no se pudo guardar el estado del chat:', error)
-    }
-  }, [
-    claveEstadoChat,
-    mensajes,
-    fallbackIntentos,
-    handover,
-    formHandover,
-    handoverEnviado,
-  ])
-
-  useEffect(() => {
-    handoverRef.current = handover
-  }, [handover])
 
   // ============================================================
   // CARGAR CONFIGURACIÓN DE LA TIENDA
@@ -307,20 +212,15 @@ const [visitorId, setVisitorId] = useState<string | null>(null)
         // ======================================================
 
         if (data.mensaje_bienvenida) {
-          setMensajes((prev) => {
-            // Nunca sustituimos una conversación activa ni un handover
-            // por el mensaje de bienvenida al sincronizar configuración.
-            if (prev.length > 1 || handoverRef.current) {
-              return prev
-            }
 
-            return [
-              {
-                rol: 'bot',
-                texto: data.mensaje_bienvenida,
-              },
-            ]
-          })
+          setMensajes([
+            {
+              rol: 'bot',
+              texto:
+                data.mensaje_bienvenida,
+            },
+          ])
+
         }
 
       }
@@ -670,32 +570,34 @@ useEffect(() => {
       )
 
       if (data.handover === true) {
-        const nuevoHandover = {
-          action:
-            data.handoverAction ||
-            'formulario',
-          whatsappUrl:
-            data.whatsappUrl ||
-            null,
-          emailUrl:
-            data.emailUrl ||
-            null
-        } as const
+        const accion =
+          data.handoverAction ||
+          'formulario'
 
-        handoverRef.current = nuevoHandover
-        setHandover(nuevoHandover)
+        const whatsappUrl =
+          data.whatsappUrl || null
 
-        // En producción, WhatsApp y email son canales directos.
-        // En el preview mantenemos el panel para poder probarlo sin
-        // sacar al usuario del dashboard.
-        if (!modoPreview) {
-          if (nuevoHandover.action === 'whatsapp' && nuevoHandover.whatsappUrl) {
-            window.location.href = nuevoHandover.whatsappUrl
-          } else if (nuevoHandover.action === 'email' && nuevoHandover.emailUrl) {
-            window.location.href = nuevoHandover.emailUrl
-          }
+        const emailUrl =
+          data.emailUrl || null
+
+        // En producción, WhatsApp y Email redirigen directamente.
+        // En Preview mantenemos el botón para no sacar al usuario del dashboard.
+        if (!modoPreview && accion === 'whatsapp' && whatsappUrl) {
+          window.location.href = whatsappUrl
+          return
         }
-      } else if (!handoverRef.current) {
+
+        if (!modoPreview && accion === 'email' && emailUrl) {
+          window.location.href = emailUrl
+          return
+        }
+
+        setHandover({
+          action: accion,
+          whatsappUrl,
+          emailUrl
+        })
+      } else {
         setHandover(null)
       }
 
@@ -1086,7 +988,7 @@ useEffect(() => {
                       )
                     }
                     placeholder="Tu nombre"
-                    className="w-full border border-gray-300 rounded-xl px-3 py-2 text-xs text-gray-900 placeholder:text-gray-400 focus:outline-none"
+                    className="w-full border border-gray-300 rounded-xl px-3 py-2 text-xs focus:outline-none"
                   />
 
                   <input
@@ -1105,7 +1007,7 @@ useEffect(() => {
                       )
                     }
                     placeholder="Tu email"
-                    className="w-full border border-gray-300 rounded-xl px-3 py-2 text-xs text-gray-900 placeholder:text-gray-400 focus:outline-none"
+                    className="w-full border border-gray-300 rounded-xl px-3 py-2 text-xs focus:outline-none"
                   />
 
                   <textarea
@@ -1124,7 +1026,7 @@ useEffect(() => {
                       )
                     }
                     placeholder="¿En qué podemos ayudarte?"
-                    className="w-full border border-gray-300 rounded-xl px-3 py-2 text-xs text-gray-900 placeholder:text-gray-400 focus:outline-none resize-none"
+                    className="w-full border border-gray-300 rounded-xl px-3 py-2 text-xs focus:outline-none resize-none"
                   />
 
                   <button
@@ -1148,7 +1050,6 @@ useEffect(() => {
             </div>
           )}
 
-          {(!handover || handoverEnviado) && (
           <form
             onSubmit={enviarMensaje}
             className="bg-white border-t border-gray-200 p-2.5 flex gap-2"
@@ -1163,7 +1064,7 @@ useEffect(() => {
                 )
               }
               placeholder="Escribe tu mensaje..."
-              className="flex-1 border border-gray-300 rounded-xl px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none"
+              className="flex-1 border border-gray-300 rounded-xl px-3 py-2 text-sm focus:outline-none"
               style={{
                 borderColor:
                   colorPrimario
@@ -1183,7 +1084,6 @@ useEffect(() => {
             </button>
 
           </form>
-          )}
 
         </div>
 
@@ -1196,7 +1096,13 @@ useEffect(() => {
       {!modoPreview && (
       <button
         onClick={() => {
-          setAbierto((prev) => !prev)
+
+          setAbierto(!abierto)
+
+          if (!abierto) {
+            cargarConfiguracion()
+          }
+
         }}
         className="text-white w-14 h-14 rounded-full shadow-2xl flex items-center justify-center hover:scale-105 transition-all duration-300 cursor-pointer overflow-hidden border-2 border-white/20"
         style={{
