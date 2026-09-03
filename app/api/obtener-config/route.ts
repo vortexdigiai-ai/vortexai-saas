@@ -1,0 +1,2 @@
+import { NextRequest,NextResponse } from 'next/server'; import { getTenantById } from '@/lib/tenant';
+export async function GET(req:NextRequest){const id=req.nextUrl.searchParams.get('tiendaId');if(!id)return NextResponse.json({error:'Falta tiendaId'},{status:400});const tienda=await getTenantById(id);if(!tienda)return NextResponse.json({error:'Tienda no encontrada'},{status:404});return NextResponse.json(tienda);}

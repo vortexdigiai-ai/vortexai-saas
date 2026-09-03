@@ -1,36 +1,28 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# VortexAI — rebuild
 
-## Getting Started
+SaaS multi-tenant para chatbots IA de ecommerce.
 
-First, run the development server:
-
+## 1. Instalación
 ```bash
+npm install
+cp .env.example .env.local
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## 2. Variables
+Completa `.env.local` con Supabase, Anthropic, Stripe y Resend. Nunca subas secretos a Git.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## 3. Supabase
+El proyecto está preparado para el esquema existente de VortexAI. Antes de producción, aplica la migración `supabase/production-migration.sql` y revisa las políticas RLS.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## 4. Stripe
+El checkout se crea en servidor y lleva `user_id`, `tienda_id` y `plan` en metadata. Configura el webhook apuntando a `/api/stripe-webhook` y usa el secreto del endpoint.
 
-## Learn More
+## 5. Email
+El formulario de handover usa Resend desde servidor. El destinatario se obtiene del email de la cuenta Supabase del propietario de la tienda, con `email_soporte` como fallback.
 
-To learn more about Next.js, take a look at the following resources:
+## 6. Widget
+La instalación usa `/widget.js` y un `data-tienda-id`. No hay un tenant por defecto: si falta el ID, el widget no se monta.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## Nota
+Este rebuild evita datos ficticios en analíticas y no incluye claves privadas. Para producción hay que completar la migración RLS y validar las integraciones con las credenciales reales del proyecto.
