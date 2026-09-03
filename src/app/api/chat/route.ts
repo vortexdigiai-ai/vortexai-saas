@@ -91,6 +91,7 @@ if ((!mensaje && !inicioWidget) || !tiendaId) {
       .from('tiendas')
       .select(`
   nombre_tienda,
+  plan,
   productos_json,
   tiempos_envio,
   politicas,
@@ -637,36 +638,25 @@ Nunca inventes información que no aparezca en los datos proporcionados.
       textoLimpio.toLowerCase()
 
     // Detección secundaria por si el modelo no devuelve el marcador.
-    // Incluye las formulaciones reales que puede utilizar Claude
-    // cuando reconoce que no tiene la información solicitada.
     const deteccionSecundaria =
-      textoLower.includes('no tengo esa información') ||
-      textoLower.includes('no tengo esa informacion') ||
-      textoLower.includes('no tengo información') ||
-      textoLower.includes('no tengo informacion') ||
-      textoLower.includes('no tengo información detallada') ||
-      textoLower.includes('no tengo informacion detallada') ||
-      textoLower.includes('no dispongo de esa información') ||
-      textoLower.includes('no dispongo de esa informacion') ||
-      textoLower.includes('no dispongo de información') ||
-      textoLower.includes('no dispongo de informacion') ||
-      textoLower.includes('no puedo proporcionar esa información') ||
-      textoLower.includes('no puedo proporcionar esa informacion') ||
-      textoLower.includes('no encuentro esa información') ||
-      textoLower.includes('no encuentro esa informacion') ||
-      textoLower.includes('no encuentro la información') ||
-      textoLower.includes('no encuentro la informacion') ||
-      textoLower.includes('no se encuentra esa información') ||
-      textoLower.includes('no se encuentra esa informacion') ||
-      textoLower.includes('no está disponible en') ||
-      textoLower.includes('no esta disponible en') ||
-      textoLower.includes('no está disponible') ||
-      textoLower.includes('no esta disponible') ||
-      textoLower.includes('no aparece en') ||
-      textoLower.includes('no está incluido en') ||
-      textoLower.includes('no esta incluido en') ||
-      textoLower.includes('no cuento con esa información') ||
-      textoLower.includes('no cuento con esa informacion')
+      textoLower.includes(
+        'no tengo esa información'
+      ) ||
+      textoLower.includes(
+        'no tengo informacion'
+      ) ||
+      textoLower.includes(
+        'no dispongo de esa información'
+      ) ||
+      textoLower.includes(
+        'no puedo proporcionar esa información'
+      ) ||
+      textoLower.includes(
+        'no está disponible en'
+      ) ||
+      textoLower.includes(
+        'no esta disponible en'
+      )
 
     const respuestaNoEncontrada =
       contieneNoEncontrado ||
@@ -679,7 +669,14 @@ Nunca inventes información que no aparezca en los datos proporcionados.
 
     const debeDerivar =
       !inicioWidget &&
-      respuestaNoEncontrada
+      (
+        intentosFallback >=
+          umbralFrustracion ||
+        (
+          tienda.analisis_sentimiento === true &&
+          contieneFrustracion
+        )
+      )
 
     let respuestaFinal =
       textoLimpio
